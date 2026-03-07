@@ -57,6 +57,7 @@ export interface ChatParams {
   tools?: OAITool[];
   tool_choice?: "auto" | "none" | "required";
   json_mode?: boolean;
+  signal?: AbortSignal; // cancel mid-flight
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -166,7 +167,7 @@ export class LLMClient {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000),
+      signal: params.signal ?? AbortSignal.timeout(180_000),
     });
 
     if (!res.ok) {
@@ -290,7 +291,7 @@ export class LLMClient {
       method: "POST",
       headers: { "Content-Type": "application/json", ...this.authHeaders() },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000),
+      signal: params.signal ?? AbortSignal.timeout(180_000),
     });
 
     if (!res.ok) {

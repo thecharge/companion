@@ -49,7 +49,7 @@ orchestrator:
 
 agents:
   analyst:
-    model:       smart
+    model:       local             # set to "smart" when ANTHROPIC_API_KEY is configured
     description: "Reads and analyses documents, code, and data. Produces structured observations."
     tools:       [read_file, search_history, search_memory, web_fetch]
     reads_from:  [goal, observations]
@@ -57,7 +57,7 @@ agents:
     max_turns:   6
 
   engineer:
-    model:       local   # override with "local" if no API key: set COMPANION_ENGINEER_MODEL=local
+    model:       local             # set to "smart" for complex code tasks with API key
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
     tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history]
     reads_from:  [goal, observations, artifacts]
@@ -65,7 +65,7 @@ agents:
     max_turns:   12
 
   responder:
-    model:       fast
+    model:       local             # set to "fast" when ANTHROPIC_API_KEY is configured
     description: "Synthesises agent outputs into a clear, concise reply to the user."
     tools:       []
     reads_from:  [goal, observations, artifacts, decisions]

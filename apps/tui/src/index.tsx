@@ -415,10 +415,14 @@ function App() {
   }, []);
 
   const abortStream = useCallback(() => {
+    // Cancel server-side loop via WS — stops the LLM calls, not just our read
+    if (wsRef.current?.readyState === WebSocket.OPEN && currentSidRef.current) {
+      wsRef.current.send(JSON.stringify({ type: "cancel", session_id: currentSidRef.current }));
+    }
     abortCtrlRef.current?.abort();
     abortCtrlRef.current = null;
     setStreaming(false);
-    addLog("aborted");
+    addLog("cancelled");
   }, [addLog]);
 
   // Poll sessions + capabilities every 5s

@@ -405,7 +405,9 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
     const result = await sandbox.run(cmd, ctx.working_dir, 120_000);
     const out = result.stdout.trim();
     const err = result.stderr.trim();
+
     const parts = [`Exit: ${result.exitCode}`];
+
     if (out) parts.push(`stdout:\n${out}`);
     if (err) parts.push(`stderr:\n${err}`);
     return parts.join("\n");

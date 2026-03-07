@@ -96,6 +96,7 @@ interface ActiveTaskState {
   status: "thinking" | "running_tool" | "synthesizing";
 }
 const activeTasks = new Map<string, ActiveTaskState>();
+const activeCancels = new Map<string, AbortController>(); // session_id → cancel
 
 bus.on("agent_start", (e) => {
   const p = e.payload as Record<string, unknown>;
@@ -171,6 +172,7 @@ async function processMessage(
   session: Awaited<ReturnType<typeof db.sessions.get>>,
   content: string,
   workingDir: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!session) return;
 
@@ -211,6 +213,7 @@ async function processMessage(
       history: historyMsgs,
       working_dir: workingDir,
       mode: session.mode,
+      signal,
     });
 
     const assistantMsg = await db.messages.add({
@@ -409,15 +412,22 @@ async function handleHTTP(req: Request): Promise<Response> {
           if (e.type === "error") send({ type: "error", ...(e.payload as object) });
         });
 
-        processMessage(sid, session, content, workingDir).catch((e) => {
-          send({ type: "error", error: String(e) });
-          try {
-            controller.close();
-          } catch {
-            /* already closed */
-          }
-          unsub();
-        });
+        const ctrl = new AbortController();
+        activeCancels.set(sid, ctrl);
+
+        processMessage(sid, session, content, workingDir, ctrl.signal)
+          .catch((e) => {
+            send({ type: "error", error: String(e) });
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            unsub();
+          })
+          .finally(() => {
+            activeCancels.delete(sid);
+          });
 
         return new Response(stream, {
           headers: {
@@ -429,7 +439,11 @@ async function handleHTTP(req: Request): Promise<Response> {
       }
 
       // Async non-streaming — 202
-      processMessage(sid, session, content, workingDir).catch((e) => log.error("processMessage", e));
+      const ctrl202 = new AbortController();
+      activeCancels.set(sid, ctrl202);
+      processMessage(sid, session, content, workingDir, ctrl202.signal)
+        .catch((e) => log.error("processMessage", e))
+        .finally(() => activeCancels.delete(sid));
       return Response.json({ message: userMsg }, { status: 202 });
     }
 
@@ -488,7 +502,6 @@ Bun.serve<{ session_id: string }>({
           subs.get(ws.data.session_id)?.delete(ws);
           subscribe(ws, msg.session_id);
           ws.send(JSON.stringify({ type: "subscribed", session_id: msg.session_id }));
-          // Push sync_state for the new session too
           const task = activeTasks.get(msg.session_id) ?? null;
           ws.send(
             JSON.stringify({
@@ -498,6 +511,23 @@ Bun.serve<{ session_id: string }>({
               ts: new Date().toISOString(),
             }),
           );
+        }
+        // Cancel a running task server-side
+        if (msg.type === "cancel" && msg.session_id) {
+          const ctrl = activeCancels.get(msg.session_id);
+          if (ctrl) {
+            ctrl.abort();
+            activeCancels.delete(msg.session_id);
+            log.info(`Session ${msg.session_id} cancelled via WS`);
+            ws.send(JSON.stringify({ type: "cancelled", session_id: msg.session_id }));
+            // Emit cancellation event so TUI clears spinner
+            bus.emit({
+              type: "error",
+              session_id: msg.session_id as SessionId,
+              ts: new Date(),
+              payload: { error: "cancelled" },
+            });
+          }
         }
       } catch (e) {
         log.debug(`WS message parse error: ${e}`);

@@ -1,16 +1,21 @@
 /**
- * @companion/agents
+ * @companion/agents — v2
  *
- * Orchestrator: reads Blackboard, dispatches to agents, verifies results.
- * AgentRunner:  ReAct loop (structured tool calls for capable models,
- *               JSON mode for small Ollama models).
+ * Fixes vs previous version:
  *
- * Key design decisions:
- * - Orchestrator is a DISPATCHER only — never does the work itself
- * - Asymmetric verify: skip if worker model outranks orchestrator
- * - Duplicate error circuit breaker: prevents infinite retry loops
- * - max_turns graceful exit: injects WARNING on penultimate turn
- * - agent_thought events: TUI shows live reasoning
+ * 1. NO orchestrator re-evaluation after agent succeeds.
+ *    The old code ran the orchestrator again after engineer, which caused qwen to
+ *    route to analyst, then loop ×10. Now: engineer succeeds → responder → done.
+ *
+ * 2. AbortSignal threaded everywhere. Cancel mid-flight via WS {"type":"cancel"}.
+ *
+ * 3. Self-verify disabled. When orchestrator and agent use the same model,
+ *    qwen2.5:3b verifying its own output is noise that randomly rejects valid answers.
+ *
+ * 4. ReAct recursion capped at depth=1. One recovery attempt, then use raw text.
+ *
+ * 5. Orchestrator only routes — runs ONCE to pick an agent, then waits for result.
+ *    If result is good: responder. If bad (error/cancelled): abort. No loops.
  */
 
 import type { Config } from "@companion/config";
@@ -30,36 +35,37 @@ export interface AgentRunParams {
   user_message: string;
   history: ChatMessage[];
   working_dir: string;
+  signal?: AbortSignal;
 }
 
 export interface AgentRunResult {
   reply: string;
   blackboard: Blackboard;
-  stopped_reason: "done" | "max_turns" | "error";
+  stopped_reason: "done" | "max_turns" | "error" | "cancelled";
 }
 
-// ── Orchestrator prompt ───────────────────────────────────────
+// ── Orchestrator prompt — fires once, picks one agent ─────────
 
 function buildOrchestratorPrompt(bb: Blackboard, mode: string): string {
-  return `You are an orchestrator. Your ONLY job is to decide which agent to call next.
-DO NOT do the work yourself. DO NOT call write_file, read_file, or any task tool directly.
-If the user wants code written, route to 'engineer'. If analysis is needed, route to 'analyst'.
-Use 'reply' or 'done' only after agents have produced the answer.
+  const agents = ["engineer", "analyst", "responder"];
+  return `You are a router. Pick ONE agent for this task. Reply with ONLY valid JSON.
 
 Mode: ${mode}
-${bb.summary()}
+Goal: ${bb.goal || "not set"}
 
-Respond with ONLY valid JSON in this exact shape:
-{"action":"run_agent","target":"engineer","reason":"needs code written"}
-{"action":"run_agent","target":"analyst","reason":"needs data analysis"}
-{"action":"reply","target":"responder","reason":"ready to synthesise"}
-{"action":"done","reason":"task complete, already replied"}`;
-}
+Agents:
+- engineer: writes code, runs shell commands, reads/writes files
+- analyst: reads documents, searches history, fetches URLs
+- responder: answers directly from knowledge (no tools needed)
 
-// ── Blackboard → Markdown (small models parse this better than JSON) ──
+For "what is system load", "check disk space", "list processes" → engineer (uses run_shell)
+For "summarise", "search", "fetch URL" → analyst
+For simple questions with no tool needed → responder
 
-function formatBlackboard(bb: Blackboard): string {
-  return bb.summary();
+Reply ONLY with one of:
+{"action":"run_agent","target":"engineer","reason":"one line"}
+{"action":"run_agent","target":"analyst","reason":"one line"}
+{"action":"run_agent","target":"responder","reason":"one line"}`;
 }
 
 // ── AgentRunner ───────────────────────────────────────────────
@@ -73,7 +79,11 @@ class AgentRunner {
     private db: DB,
   ) {}
 
-  async run(params: AgentRunParams): Promise<{ reply: string; stopped_reason: "done" | "max_turns" | "error" }> {
+  async run(params: AgentRunParams): Promise<{
+    reply: string;
+    stopped_reason: "done" | "max_turns" | "error" | "cancelled";
+  }> {
+    const { signal } = params;
     const agentCfg = this.cfg.agents[this.agentName];
     if (!agentCfg) throw new Error(`Unknown agent: ${this.agentName}`);
 
@@ -87,11 +97,10 @@ class AgentRunner {
       .map((name) => this.registry.get(name)?.schema)
       .filter((t): t is OAITool => t !== undefined);
 
-    const bbView = formatBlackboard(params.blackboard);
     const systemPrompt = [
       `You are the ${this.agentName} agent. ${agentCfg.description}`,
-      `Blackboard:\n${bbView}`,
-      tools.length ? "Use the provided tools to complete the task." : "",
+      `Goal: ${params.blackboard.goal || params.user_message}`,
+      tools.length ? "Use the provided tools to complete the task. Be concise." : "",
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -105,7 +114,7 @@ class AgentRunner {
 
     const messages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
-      ...params.history.slice(-20),
+      ...params.history.slice(-10),
       { role: "user", content: params.user_message },
     ];
 
@@ -116,15 +125,18 @@ class AgentRunner {
       payload: { agent: this.agentName, model: modelAlias },
     });
 
-    let lastFailedSignature: string | null = null;
+    let lastFailedSig: string | null = null;
 
     for (let turn = 0; turn < maxTurns; turn++) {
-      // Penultimate turn — force final synthesis
+      if (signal?.aborted) {
+        this._end(params.session_id, "cancelled");
+        return { reply: "", stopped_reason: "cancelled" };
+      }
+
       if (turn === maxTurns - 1) {
         messages.push({
           role: "system",
-          content:
-            "WARNING: This is your last turn. Synthesise everything and give a final answer now. Do not call any more tools.",
+          content: "FINAL TURN. Give your answer now. Do not call any more tools.",
         });
       }
 
@@ -133,32 +145,30 @@ class AgentRunner {
       let response: ChatMessage;
       try {
         if (useStructured) {
-          const res = await llm.chat({ messages, tools, tool_choice: "auto" });
+          const res = await llm.chat({ messages, tools, tool_choice: "auto", signal });
           response = res.choices[0]!.message;
         } else {
-          // Small Ollama model — JSON mode ReAct
-          const reactPrompt = buildReActPrompt(tools);
           const res = await llm.chat({
-            messages: [...messages, { role: "system", content: reactPrompt }],
+            messages: [...messages, { role: "system", content: buildReActPrompt(tools) }],
             json_mode: true,
+            signal,
           });
-          response = res.choices[0]!.message;
-          response = await this.parseReActResponse(response, messages, llm, tools);
+          response = await this.parseReAct(res.choices[0]!.message, messages, llm, signal);
         }
       } catch (e) {
-        log.error(`Agent ${this.agentName} LLM call failed`, e);
-        bus.emit({
-          type: "agent_end",
-          session_id: params.session_id,
-          ts: new Date(),
-          payload: { agent: this.agentName, stopped_reason: "error" },
-        });
-        return { reply: `Agent error: ${String(e)}`, stopped_reason: "error" };
+        const msg = String(e);
+        if (signal?.aborted || msg.includes("AbortError") || msg.includes("abort")) {
+          this._end(params.session_id, "cancelled");
+          return { reply: "", stopped_reason: "cancelled" };
+        }
+        log.error(`Agent ${this.agentName} LLM failed`, e);
+        this._end(params.session_id, "error");
+        if (/HTTP (401|403|404)/.test(msg)) throw new Error(msg); // fatal — let orchestrator abort
+        return { reply: `Error: ${msg}`, stopped_reason: "error" };
       }
 
       messages.push({ role: "assistant", content: response.content, tool_calls: response.tool_calls });
 
-      // Emit thought if text content present alongside tool calls
       if (response.content) {
         bus.emit({
           type: "agent_thought",
@@ -168,27 +178,25 @@ class AgentRunner {
         });
       }
 
-      // Done — no more tool calls
       if (!isToolCall(response)) {
-        bus.emit({
-          type: "agent_end",
-          session_id: params.session_id,
-          ts: new Date(),
-          payload: { agent: this.agentName, stopped_reason: "done" },
-        });
+        this._end(params.session_id, "done");
         return { reply: response.content ?? "", stopped_reason: "done" };
       }
 
       // Execute tool calls
       const toolResults: ChatMessage[] = [];
       for (const tc of response.tool_calls ?? []) {
-        const callSig = `${tc.function.name}:${tc.function.arguments}`;
+        if (signal?.aborted) break;
 
-        // Circuit breaker — same call failing twice means model is stuck
-        if (callSig === lastFailedSignature) {
-          const breakMsg = `[circuit breaker] Tool ${tc.function.name} failed with identical args. Try a different approach.`;
-          messages.push({ role: "tool", content: breakMsg, tool_call_id: tc.id, name: tc.function.name });
-          lastFailedSignature = null;
+        const sig = `${tc.function.name}:${tc.function.arguments}`;
+        if (sig === lastFailedSig) {
+          toolResults.push({
+            role: "tool",
+            content: `[blocked] ${tc.function.name} failed with same args — try different approach`,
+            tool_call_id: tc.id,
+            name: tc.function.name,
+          });
+          lastFailedSig = null;
           continue;
         }
 
@@ -196,9 +204,13 @@ class AgentRunner {
         try {
           args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
         } catch {
-          const errMsg = `Invalid arguments JSON for ${tc.function.name}: ${tc.function.arguments.slice(0, 100)}`;
-          toolResults.push({ role: "tool", content: errMsg, tool_call_id: tc.id, name: tc.function.name });
-          lastFailedSignature = callSig;
+          toolResults.push({
+            role: "tool",
+            content: `Bad JSON args for ${tc.function.name}`,
+            tool_call_id: tc.id,
+            name: tc.function.name,
+          });
+          lastFailedSig = sig;
           continue;
         }
 
@@ -218,12 +230,7 @@ class AgentRunner {
           payload: { tool: tc.function.name, duration_ms: result.duration_ms, error: result.error },
         });
 
-        if (result.error) {
-          lastFailedSignature = callSig;
-        } else {
-          lastFailedSignature = null;
-        }
-
+        lastFailedSig = result.error ? sig : null;
         toolResults.push({
           role: "tool",
           content: result.result ?? result.error ?? "no output",
@@ -235,75 +242,83 @@ class AgentRunner {
       messages.push(...toolResults);
     }
 
-    // Exhausted turns
     const lastContent = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
-    bus.emit({
-      type: "agent_end",
-      session_id: params.session_id,
-      ts: new Date(),
-      payload: { agent: this.agentName, stopped_reason: "max_turns" },
-    });
+    this._end(params.session_id, "max_turns");
     return { reply: lastContent, stopped_reason: "max_turns" };
   }
 
-  private async parseReActResponse(
+  private _end(sid: SessionId, reason: string) {
+    bus.emit({
+      type: "agent_end",
+      session_id: sid,
+      ts: new Date(),
+      payload: { agent: this.agentName, stopped_reason: reason },
+    });
+  }
+
+  /** Parse ReAct JSON — one recovery attempt max, no recursion spiral */
+  private async parseReAct(
     response: ChatMessage,
     messages: ChatMessage[],
     llm: ReturnType<typeof createLLMClient>,
-    tools: OAITool[],
+    signal?: AbortSignal,
+    depth = 0,
   ): Promise<ChatMessage> {
     const raw = response.content ?? "";
+    const cleaned = raw
+      .replace(/^```json\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    let parsed: { thought?: string; action?: string; tool?: string; result?: string; args?: Record<string, unknown> };
     try {
-      const parsed = JSON.parse(raw) as {
-        thought?: string;
-        action?: string;
-        tool?: string;
-        args?: Record<string, unknown>;
-      };
-      if (parsed.action === "final_answer" || !parsed.tool) {
-        return { role: "assistant", content: parsed.thought ?? raw };
-      }
-      // Reconstruct as tool_calls
-      return {
-        role: "assistant",
-        content: parsed.thought ?? null,
-        tool_calls: [
-          {
-            id: `react_${Date.now()}`,
-            type: "function" as const,
-            function: {
-              name: parsed.tool ?? "unknown",
-              arguments: JSON.stringify(parsed.args ?? {}),
-            },
-          },
-        ],
-      };
+      parsed = JSON.parse(cleaned) as typeof parsed;
     } catch {
-      // Recovery: ask model to fix its output
-      const recovery = await llm.chat({
-        messages: [
-          ...messages,
-          { role: "assistant", content: raw },
-          {
-            role: "user",
-            content: `Your output was not valid JSON. Output ONLY valid JSON starting with { and ending with }. No apologies, no explanation.\nBroken: ${raw.slice(0, 200)}`,
-          },
-        ],
-        json_mode: true,
-      });
-      const fixed = recovery.choices[0]?.message ?? { role: "assistant" as const, content: raw };
-      return this.parseReActResponse(fixed, messages, llm, tools);
+      if (depth >= 1) {
+        log.warn("ReAct parse failed after recovery — treating as final answer");
+        return { role: "assistant", content: raw };
+      }
+      // One recovery attempt
+      try {
+        const fix = await llm.chat({
+          messages: [
+            ...messages,
+            { role: "assistant", content: raw },
+            { role: "user", content: `Invalid JSON. Reply with ONLY valid JSON, no markdown:\n${raw.slice(0, 150)}` },
+          ],
+          json_mode: true,
+          signal,
+        });
+        return this.parseReAct(fix.choices[0]!.message, messages, llm, signal, depth + 1);
+      } catch {
+        return { role: "assistant", content: raw };
+      }
     }
+
+    if (parsed.action === "final_answer" || !parsed.tool) {
+      return { role: "assistant", content: parsed.result ?? parsed.thought ?? raw };
+    }
+
+    return {
+      role: "assistant",
+      content: parsed.thought ?? null,
+      tool_calls: [
+        {
+          id: `react_${Date.now()}`,
+          type: "function" as const,
+          function: { name: parsed.tool, arguments: JSON.stringify(parsed.args ?? {}) },
+        },
+      ],
+    };
   }
 }
 
 function buildReActPrompt(tools: OAITool[]): string {
-  const toolList = tools.map((t) => `- ${t.function.name}: ${t.function.description}`).join("\n");
-  return `You must respond with ONLY valid JSON. No markdown, no explanation.
-Available tools:\n${toolList}
-
-To call a tool: {"thought":"why","tool":"tool_name","args":{"param":"value"}}
-When done:      {"thought":"reasoning","action":"final_answer","result":"your answer"}`;
+  const list = tools.map((t) => `- ${t.function.name}: ${t.function.description}`).join("\n");
+  return `Respond with ONLY valid JSON. No markdown fences.
+Tools:\n${list}
+Use tool:     {"thought":"why","tool":"name","args":{"key":"val"}}
+Final answer: {"thought":"reasoning","action":"final_answer","result":"your answer here"}`;
 }
 
 // ── Orchestrator ──────────────────────────────────────────────
@@ -315,6 +330,7 @@ export interface OrchestratorParams {
   history: ChatMessage[];
   working_dir: string;
   mode: string;
+  signal?: AbortSignal;
 }
 
 export class SessionProcessor {
@@ -326,116 +342,120 @@ export class SessionProcessor {
   ) {}
 
   async handleMessage(params: OrchestratorParams): Promise<AgentRunResult> {
-    const { session_id, blackboard, user_message, history, working_dir, mode } = params;
+    const { session_id, blackboard, user_message, history, working_dir, mode, signal } = params;
+
+    if (signal?.aborted) return { reply: "", blackboard, stopped_reason: "cancelled" };
 
     const orchAlias = this.cfg.orchestrator.model;
     const orchCfg = this.cfg.models[orchAlias];
     if (!orchCfg) throw new Error(`Orchestrator model alias not found: ${orchAlias}`);
 
+    blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
+
+    // ── Step 1: orchestrator picks ONE agent ──────────────────
     const orchLLM = createLLMClient(orchCfg);
-    const maxRounds = this.cfg.orchestrator.max_rounds;
+    let decision: { action: string; target?: string; reason?: string };
 
-    blackboard.appendDecision(0, "start", "orchestrator", `User: ${user_message.slice(0, 100)}`);
-
-    for (let round = 1; round <= maxRounds; round++) {
-      const prompt = buildOrchestratorPrompt(blackboard, mode);
-      const orchRes = await orchLLM.chat({
+    try {
+      const res = await orchLLM.chat({
         messages: [
-          { role: "system", content: prompt },
+          { role: "system", content: buildOrchestratorPrompt(blackboard, mode) },
           { role: "user", content: user_message },
         ],
         json_mode: orchCfg.provider === "ollama",
+        signal,
       });
-
-      const raw = orchRes.choices[0]?.message.content ?? "";
-
-      let decision: { action: string; target?: string; reason?: string };
+      const raw = res.choices[0]?.message.content ?? "";
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
       try {
-        decision = JSON.parse(raw) as typeof decision;
+        decision = JSON.parse(cleaned) as typeof decision;
       } catch {
-        log.warn("Orchestrator returned non-JSON, defaulting to responder", { raw: raw.slice(0, 100) });
-        decision = { action: "reply", target: "responder", reason: "orchestrator parse error" };
+        log.warn("Orchestrator non-JSON — defaulting to engineer", { raw: raw.slice(0, 80) });
+        decision = { action: "run_agent", target: "engineer", reason: "parse fallback" };
       }
-
-      bus.emit({
-        type: "orchestrator_decision",
-        session_id,
-        ts: new Date(),
-        payload: { round, action: decision.action, target: decision.target },
-      });
-
-      blackboard.appendDecision(round, decision.action, decision.target ?? "", decision.reason ?? "");
-
-      if (decision.action === "done") {
-        const lastObs = blackboard.read("observations").slice(-1)[0] ?? "";
-        return { reply: lastObs, blackboard, stopped_reason: "done" };
-      }
-
-      if (decision.action === "reply" || decision.action === "run_agent") {
-        const targetName = decision.target ?? "responder";
-        const agentDef = this.cfg.agents[targetName];
-
-        if (!agentDef) {
-          blackboard.appendRejection(round, targetName, `Agent "${targetName}" not found`);
-          continue;
-        }
-
-        const runner = new AgentRunner(targetName, this.cfg, this.registry, this.memory, this.db);
-        const result = await runner.run({ session_id, blackboard, user_message, history, working_dir });
-
-        // Asymmetric verify: skip if agent model outranks orchestrator
-        const agentModelAlias = agentDef.model;
-        const shouldVerify =
-          this.cfg.orchestrator.verify_results &&
-          !(orchCfg.provider === "ollama" && this.cfg.models[agentModelAlias]?.provider !== "ollama");
-
-        if (shouldVerify && result.reply) {
-          const verdict = await this.verify(orchLLM, user_message, result.reply);
-          bus.emit({ type: "orchestrator_verify", session_id, ts: new Date(), payload: verdict });
-
-          if (!verdict.ok) {
-            blackboard.appendRejection(round, targetName, verdict.reason);
-            continue;
-          }
-        } else if (!shouldVerify) {
-          log.info(`Skipping verify: agent "${agentModelAlias}" outranks orchestrator "${orchAlias}"`);
-        }
-
-        blackboard.appendObservation(`[${targetName}] ${result.reply.slice(0, 400)}`);
-
-        if (decision.action === "reply" || targetName === "responder") {
-          return { reply: result.reply, blackboard, stopped_reason: result.stopped_reason };
-        }
-      }
+    } catch (e) {
+      const msg = String(e);
+      if (signal?.aborted || msg.includes("AbortError")) return { reply: "", blackboard, stopped_reason: "cancelled" };
+      throw e;
     }
 
-    // Max rounds exhausted — synthesise what we have
-    const lastObs = blackboard.read("observations").slice(-1)[0] ?? "Unable to complete task within round limit.";
-    return { reply: lastObs, blackboard, stopped_reason: "max_turns" };
-  }
-
-  private async verify(
-    llm: ReturnType<typeof createLLMClient>,
-    userMessage: string,
-    agentReply: string,
-  ): Promise<{ ok: boolean; reason: string }> {
-    const res = await llm.chat({
-      messages: [
-        {
-          role: "system",
-          content: `You verify agent outputs. Reply ONLY with valid JSON: {"ok":true,"reason":"..."} or {"ok":false,"reason":"..."}`,
-        },
-        {
-          role: "user",
-          content: `Task: ${userMessage}\nAgent reply: ${agentReply.slice(0, 600)}\nIs the reply correct and complete?`,
-        },
-      ],
-      json_mode: true,
+    bus.emit({
+      type: "orchestrator_decision",
+      session_id,
+      ts: new Date(),
+      payload: { round: 1, action: decision.action, target: decision.target },
     });
-    try {
-      return JSON.parse(res.choices[0]?.message.content ?? "{}") as { ok: boolean; reason: string };
-    } catch {
-      return { ok: true, reason: "verify parse error — assuming ok" };
+    blackboard.appendDecision(1, decision.action, decision.target ?? "", decision.reason ?? "");
+
+    const targetName = decision.target ?? "engineer";
+    const agentDef = this.cfg.agents[targetName];
+
+    if (!agentDef) {
+      log.warn(`Agent "${targetName}" not defined — falling back to responder`);
+      decision.target = "responder";
     }
+
+    // ── Step 2: run the chosen agent ──────────────────────────
+    const runner = new AgentRunner(targetName, this.cfg, this.registry, this.memory, this.db);
+    let agentResult: Awaited<ReturnType<typeof runner.run>>;
+
+    try {
+      agentResult = await runner.run({ session_id, blackboard, user_message, history, working_dir, signal });
+    } catch (fatalErr) {
+      const msg = String(fatalErr);
+      log.error(`Fatal error from "${targetName}"`, fatalErr);
+      bus.emit({ type: "error", session_id, ts: new Date(), payload: { error: msg } });
+      return { reply: `Error: ${msg}`, blackboard, stopped_reason: "error" };
+    }
+
+    if (agentResult.stopped_reason === "cancelled") {
+      return { reply: "", blackboard, stopped_reason: "cancelled" };
+    }
+
+    if (agentResult.reply) {
+      blackboard.appendObservation(`[${targetName}] ${agentResult.reply.slice(0, 400)}`);
+    }
+
+    // If orchestrator routed to responder directly, we're done
+    if (targetName === "responder" || !agentResult.reply) {
+      return { reply: agentResult.reply, blackboard, stopped_reason: agentResult.stopped_reason };
+    }
+
+    // ── Step 3: responder synthesises — no orchestrator re-eval ──
+    // This is the key fix: we NEVER give the orchestrator a second turn.
+    // After engineer/analyst succeeds, responder always runs next.
+    const respDef = this.cfg.agents["responder"];
+    if (!respDef) {
+      return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
+    }
+
+    bus.emit({
+      type: "orchestrator_decision",
+      session_id,
+      ts: new Date(),
+      payload: { round: 2, action: "reply", target: "responder" },
+    });
+
+    const respRunner = new AgentRunner("responder", this.cfg, this.registry, this.memory, this.db);
+    let respResult: Awaited<ReturnType<typeof respRunner.run>>;
+
+    try {
+      respResult = await respRunner.run({ session_id, blackboard, user_message, history, working_dir, signal });
+    } catch {
+      return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
+    }
+
+    if (respResult.stopped_reason === "cancelled") {
+      return { reply: "", blackboard, stopped_reason: "cancelled" };
+    }
+
+    return {
+      reply: respResult.reply || agentResult.reply,
+      blackboard,
+      stopped_reason: "done",
+    };
   }
 }
