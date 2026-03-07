@@ -344,6 +344,66 @@ const runShellTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   },
 });
 
+const webFetchTool: ToolDefinition = {
+  schema: {
+    type: "function",
+    function: {
+      name:        "web_fetch",
+      description: "Fetch the text content of a URL.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "URL to fetch" },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  handler: async (args) => {
+    const url = String(args["url"] ?? "");
+    const cfg = { timeout: 15_000 };
+    const res = await fetch(url, { signal: AbortSignal.timeout(cfg.timeout) });
+    if (!res.ok) return `HTTP ${res.status}: ${url}`;
+    const ct   = res.headers.get("content-type") ?? "";
+    const text = await res.text();
+    if (ct.includes("html")) {
+      // Strip tags — crude but avoids a parser dependency
+      return text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").slice(0, 8000);
+    }
+    return text.slice(0, 8000);
+  },
+};
+
+const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
+  schema: {
+    type: "function",
+    function: {
+      name:        "run_tests",
+      description: "Run the test suite in the working directory. Returns pass/fail summary.",
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Test command. Default: bun test" },
+        },
+        required: [],
+      },
+    },
+  },
+  handler: async (args, ctx) => {
+    const cmd    = String(args["command"] ?? "bun test");
+    const result = await sandbox.run(cmd, ctx.working_dir, 120_000);
+    const out    = result.stdout.trim();
+    const err    = result.stderr.trim();
+    const parts  = [`Exit: ${result.exitCode}`];
+    if (out) parts.push(`stdout:
+${out}`);
+    if (err) parts.push(`stderr:
+${err}`);
+    return parts.join("
+");
+  },
+});
+
 // ── Factory ───────────────────────────────────────────────────
 
 export function createToolRegistry(cfg: Config, db: DB): { registry: ToolRegistry; sandbox: SandboxExecutor } {
@@ -355,6 +415,10 @@ export function createToolRegistry(cfg: Config, db: DB): { registry: ToolRegistr
   registry.register(listDirTool);
   registry.register(searchHistoryTool);
   registry.register(runShellTool(sandbox));
+  registry.register(webFetchTool);
+  registry.register(runTestsTool(sandbox));
+  // search_memory is wired by MemoryService after vector store is available
+  // — registered separately in the server after memory is initialised
 
   return { registry, sandbox };
 }

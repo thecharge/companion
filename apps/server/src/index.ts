@@ -51,6 +51,37 @@ const skills = await loadSkillsDir("./skills");
 registerSkills(skills, registry);
 log.info(`Loaded ${skills.length} skill(s), ${registry.list().length} total tools`);
 
+// Register search_memory — needs the vector store, so wired here after memory init
+registry.register({
+  schema: {
+    type: "function",
+    function: {
+      name:        "search_memory",
+      description: "Semantic search across past conversation memories for this session.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "What to search for" },
+          limit: { type: "number", description: "Max results (default 5)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  handler: async (args, ctx) => {
+    try {
+      const query      = String(args["query"] ?? "");
+      const limit      = Number(args["limit"] ?? 5);
+      const queryEmbed = await embedClient.embed(query);
+      const results    = await memory.recall(ctx.session_id, queryEmbed);
+      const top        = results.slice(0, limit);
+      return top.length ? top.map((r, i) => `[${i + 1}] ${r}`).join("\n\n") : "No memories found.";
+    } catch (e) {
+      return `search_memory error: ${e}`;
+    }
+  },
+});
+
 // Embedding model for memory recall
 const embedCfg    = cfg.models[cfg.orchestrator.model]!;
 const embedClient = createLLMClient(embedCfg);
@@ -434,5 +465,28 @@ Bun.serve<{ session_id: string }>({
 
 // Startup tasks
 sandbox.cleanupZombies().catch((e) => log.warn("Zombie cleanup error", e));
+
+// Check Ollama availability for any locally-configured models
+const ollamaModels = Object.entries(cfg.models).filter(([, m]) => m.provider === "ollama");
+for (const [alias, m] of ollamaModels) {
+  const base = (m.base_url ?? "http://localhost:11434").replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json() as { models?: Array<{ name: string }> };
+      const available = data.models?.map((x) => x.name) ?? [];
+      const present   = available.some((n) => n.startsWith(m.model.split(":")[0]!));
+      if (present) {
+        log.info(`Ollama model "${m.model}" (alias: ${alias}) — ready`);
+      } else {
+        log.warn(`Ollama is running but model "${m.model}" not found. Run: ollama pull ${m.model}`);
+        log.warn(`Available: ${available.join(", ") || "(none)"}`);
+      }
+    }
+  } catch {
+    log.warn(`Ollama not reachable at ${base} for model alias "${alias}". Start Ollama or set OLLAMA_BASE_URL.`);
+  }
+}
+
 log.info(`Server listening on ${cfg.server.host}:${cfg.server.port}`);
 log.info(`DB: ${cfg.db.driver} | Tools: ${registry.list().length} | Skills: ${skills.length}`);

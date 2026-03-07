@@ -19,10 +19,13 @@ vector:
     model:      nomic-embed-text
     dimensions: 768
 
+# No API keys required for the "local" alias — uses Ollama.
+# The server checks Ollama health on startup and logs which models are available.
+# To run fully local (no cloud keys): set all agent models to "local" below.
 models:
   local:
     provider:    ollama
-    model:       qwen2.5:3b
+    model:       qwen2.5:3b        # change to any model you have: ollama list
     base_url:    ${OLLAMA_BASE_URL:-http://localhost:11434}
     max_tokens:  4096
     temperature: 0.2
@@ -54,7 +57,7 @@ agents:
     max_turns:   6
 
   engineer:
-    model:       smart
+    model:       smart   # override with "local" if no API key: set COMPANION_ENGINEER_MODEL=local
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
     tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history]
     reads_from:  [goal, observations, artifacts]
