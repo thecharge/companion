@@ -17,6 +17,9 @@ cp .env.example .env
 
 bun install
 bun test
+# pull the local model if you would like to use local first
+ollama serve # if not currently running
+bun run pull # to pull the model
 ```
 
 ## Run
