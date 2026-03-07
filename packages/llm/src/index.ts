@@ -74,9 +74,18 @@ export function isToolCall(msg: ChatMessage): boolean {
 
 export function modelSupportsTools(model: string): boolean {
   const lower = model.toLowerCase();
-  // Known local models that don't support structured tool calls
-  const noTools = ["qwen2.5:3b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b"];
+  // qwen3 (all sizes) — native tool calling via Ollama /api/chat tools param.
+  // Block only models confirmed to NOT support structured tool calls.
+  const noTools = ["qwen2.5:3b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
   return !noTools.some((m) => lower.includes(m));
+}
+
+/** Strip Qwen3 <think>...</think> blocks. Returns text and extracted thinking. */
+export function stripThinking(content: string | null): { text: string; thinking: string } {
+  if (!content) return { text: "", thinking: "" };
+  const m = content.match(/^<think>([\s\S]*?)<\/think>\s*/);
+  if (m) return { thinking: (m[1] ?? "").trim(), text: content.slice(m[0].length).trim() };
+  return { text: content, thinking: "" };
 }
 
 export function isOllama(provider: string): boolean {
@@ -141,11 +150,33 @@ export class LLMClient {
     return "http://localhost:11434";
   }
 
-  private toOllamaMessages(messages: ChatMessage[]): Array<{ role: string; content: string }> {
-    return messages.map((m) => ({
-      role: m.role === "tool" ? "user" : m.role,
-      content: m.content ?? (m.tool_calls ? JSON.stringify(m.tool_calls) : ""),
-    }));
+  private toOllamaMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
+    return messages.flatMap((m) => {
+      if (m.role === "tool") {
+        return [{ role: "tool", content: m.content ?? "", tool_call_id: m.tool_call_id }];
+      }
+      if (m.role === "assistant" && m.tool_calls?.length) {
+        return [
+          {
+            role: "assistant",
+            content: m.content ?? "",
+            tool_calls: m.tool_calls.map((tc) => ({
+              function: {
+                name: tc.function.name,
+                arguments: (() => {
+                  try {
+                    return JSON.parse(tc.function.arguments) as unknown;
+                  } catch {
+                    return tc.function.arguments;
+                  }
+                })(),
+              },
+            })),
+          },
+        ];
+      }
+      return [{ role: m.role, content: m.content ?? "" }];
+    });
   }
 
   private async ollamaChat(params: ChatParams): Promise<ChatResponse> {
@@ -159,7 +190,14 @@ export class LLMClient {
       },
     };
 
-    if (params.json_mode) {
+    // Pass tools natively — Ollama /api/chat supports the OpenAI tools param
+    // for all tool-capable models (qwen3 all sizes, llama3.1+, mistral3+, etc.)
+    if (params.tools?.length) {
+      body["tools"] = params.tools;
+    }
+
+    // json_mode only when no tools — they conflict
+    if (params.json_mode && !params.tools?.length) {
       body["format"] = "json";
     }
 
@@ -176,25 +214,58 @@ export class LLMClient {
     }
 
     const data = (await res.json()) as {
-      message: { role: string; content: string };
+      message: {
+        role: string;
+        content: string;
+        tool_calls?: Array<{ function: { name: string; arguments: unknown } }>;
+      };
       prompt_eval_count?: number;
       eval_count?: number;
     };
 
+    const msg = data.message;
+    const usage = {
+      prompt_tokens: data.prompt_eval_count ?? 0,
+      completion_tokens: data.eval_count ?? 0,
+      total_tokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+    };
+
+    // Native tool calls — Ollama returns arguments as an object, OAI expects a string
+    if (msg.tool_calls?.length) {
+      return {
+        id: `ollama-${Date.now()}`,
+        model: this.cfg.model,
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              role: "assistant",
+              content: msg.content ?? null,
+              tool_calls: msg.tool_calls.map((tc, i) => ({
+                id: `call_${Date.now()}_${i}`,
+                type: "function" as const,
+                function: {
+                  name: tc.function.name,
+                  arguments:
+                    typeof tc.function.arguments === "string"
+                      ? tc.function.arguments
+                      : JSON.stringify(tc.function.arguments),
+                },
+              })),
+            },
+          },
+        ],
+        usage,
+      };
+    }
+
+    // Strip <think> blocks from Qwen3 reasoning output
+    const { text: stripped } = stripThinking(msg.content);
     return {
       id: `ollama-${Date.now()}`,
       model: this.cfg.model,
-      choices: [
-        {
-          message: { role: "assistant", content: data.message.content },
-          finish_reason: "stop",
-        },
-      ],
-      usage: {
-        prompt_tokens: data.prompt_eval_count ?? 0,
-        completion_tokens: data.eval_count ?? 0,
-        total_tokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-      },
+      choices: [{ message: { role: "assistant", content: stripped || msg.content }, finish_reason: "stop" }],
+      usage,
     };
   }
 

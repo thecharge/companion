@@ -21,7 +21,14 @@
 import type { Config } from "@companion/config";
 import { Blackboard, Logger, bus, type SessionId } from "@companion/core";
 import type { DB } from "@companion/db";
-import { createLLMClient, isToolCall, modelSupportsTools, type ChatMessage, type OAITool } from "@companion/llm";
+import {
+  createLLMClient,
+  isToolCall,
+  modelSupportsTools,
+  stripThinking,
+  type ChatMessage,
+  type OAITool,
+} from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import type { ToolRegistry, ToolContext } from "@companion/tools";
 
@@ -97,10 +104,15 @@ class AgentRunner {
       .map((name) => this.registry.get(name)?.schema)
       .filter((t): t is OAITool => t !== undefined);
 
+    const isReAct = !modelSupportsTools(modelCfg.model) && tools.length > 0;
     const systemPrompt = [
       `You are the ${this.agentName} agent. ${agentCfg.description}`,
       `Goal: ${params.blackboard.goal || params.user_message}`,
-      tools.length ? "Use the provided tools to complete the task. Be concise." : "",
+      tools.length
+        ? isReAct
+          ? "You have tools. YOU must call them yourself by outputting JSON. DO NOT tell the user to run commands. DO NOT say 'use a tool'. YOU are the one calling the tools."
+          : "Use the provided tools to complete the task."
+        : "",
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -167,14 +179,29 @@ class AgentRunner {
         return { reply: `Error: ${msg}`, stopped_reason: "error" };
       }
 
-      messages.push({ role: "assistant", content: response.content, tool_calls: response.tool_calls });
+      // Strip <think> blocks from Qwen3 — surface as thought event, keep text clean
+      let visibleContent = response.content;
+      if (response.content && !response.tool_calls?.length) {
+        const { text, thinking } = stripThinking(response.content);
+        if (thinking) {
+          bus.emit({
+            type: "agent_thought",
+            session_id: params.session_id,
+            ts: new Date(),
+            payload: { agent: this.agentName, text: `[thinking] ${thinking.slice(0, 200)}` },
+          });
+        }
+        visibleContent = text || response.content;
+      }
 
-      if (response.content) {
+      messages.push({ role: "assistant", content: visibleContent, tool_calls: response.tool_calls });
+
+      if (visibleContent && !response.tool_calls?.length) {
         bus.emit({
           type: "agent_thought",
           session_id: params.session_id,
           ts: new Date(),
-          payload: { agent: this.agentName, text: response.content },
+          payload: { agent: this.agentName, text: visibleContent },
         });
       }
 
@@ -256,7 +283,7 @@ class AgentRunner {
     });
   }
 
-  /** Parse ReAct JSON — one recovery attempt max, no recursion spiral */
+  /** Parse ReAct JSON — detects "use tool X" plain text and re-prompts */
   private async parseReAct(
     response: ChatMessage,
     messages: ChatMessage[],
@@ -270,15 +297,42 @@ class AgentRunner {
       .replace(/\s*```$/i, "")
       .trim();
 
+    // Detect "use tool" / "you should run" / plain English advice — re-prompt once
+    const isAdvice =
+      depth === 0 &&
+      (/\b(use|call|run|try|execute)\s+(the\s+)?(tool|run_shell|command)/i.test(raw) ||
+        /you (should|need to|must|can)/i.test(raw) ||
+        (!cleaned.startsWith("{") && cleaned.length > 0));
+
+    if (isAdvice) {
+      log.warn(`Agent output advice instead of JSON — re-prompting (depth ${depth}): ${raw.slice(0, 80)}`);
+      try {
+        const fix = await llm.chat({
+          messages: [
+            ...messages,
+            { role: "assistant", content: raw },
+            {
+              role: "user",
+              content: `Wrong format. You must output JSON, not instructions. Output the JSON tool call NOW:\n{"thought":"running command","tool":"run_shell","args":{"command":"uptime && cat /proc/loadavg"}}`,
+            },
+          ],
+          json_mode: true,
+          signal,
+        });
+        return this.parseReAct(fix.choices[0]!.message, messages, llm, signal, depth + 1);
+      } catch {
+        return { role: "assistant", content: raw };
+      }
+    }
+
     let parsed: { thought?: string; action?: string; tool?: string; result?: string; args?: Record<string, unknown> };
     try {
       parsed = JSON.parse(cleaned) as typeof parsed;
     } catch {
       if (depth >= 1) {
-        log.warn("ReAct parse failed after recovery — treating as final answer");
+        log.warn("ReAct parse failed after recovery — using raw text");
         return { role: "assistant", content: raw };
       }
-      // One recovery attempt
       try {
         const fix = await llm.chat({
           messages: [
@@ -315,10 +369,22 @@ class AgentRunner {
 
 function buildReActPrompt(tools: OAITool[]): string {
   const list = tools.map((t) => `- ${t.function.name}: ${t.function.description}`).join("\n");
-  return `Respond with ONLY valid JSON. No markdown fences.
-Tools:\n${list}
-Use tool:     {"thought":"why","tool":"name","args":{"key":"val"}}
-Final answer: {"thought":"reasoning","action":"final_answer","result":"your answer here"}`;
+  return `You MUST output ONLY a single JSON object. No text before or after. No markdown.
+
+Available tools:
+${list}
+
+To call a tool, output exactly this shape:
+{"thought":"I need to run uptime to check load","tool":"run_shell","args":{"command":"uptime"}}
+
+When you have the final answer, output exactly this shape:
+{"thought":"I have the results","action":"final_answer","result":"the actual answer text here"}
+
+RULES:
+- Output ONLY JSON. Nothing else.
+- Do NOT say "use run_shell" or "you should run". YOU run it by outputting the JSON above.
+- The "tool" field must be an exact tool name from the list above.
+- Never output plain English sentences as your response.`;
 }
 
 // ── Orchestrator ──────────────────────────────────────────────

@@ -25,10 +25,18 @@ vector:
 models:
   local:
     provider:    ollama
-    model:       qwen2.5:3b        # change to any model you have: ollama list
+    # qwen3:1.7b — native tool calling, 1.1GB, Ollama tools-tagged model.
+    # Runs on any machine with 2GB+ RAM. Supports function calls natively
+    # (no JSON ReAct fallback needed). Reasoning via <think> blocks stripped automatically.
+    #
+    # Pull:  ollama pull qwen3:1.7b
+    # Larger options with same native tool support:
+    #   qwen3:4b   (~2.5GB)   qwen3:8b  (~5GB)
+    #   granite4:1b (~700MB)  — IBM, also tools-tagged, even smaller
+    model:       qwen3:1.7b
     base_url:    ${OLLAMA_BASE_URL:-http://localhost:11434}
     max_tokens:  4096
-    temperature: 0.2
+    temperature: 0.6               # qwen3 docs recommend 0.6 for non-thinking mode
   smart:
     provider:    anthropic
     model:       claude-sonnet-4-5-20251101
@@ -44,8 +52,8 @@ models:
 
 orchestrator:
   model:          local           # any alias — swap to "smart" for complex tasks
-  max_rounds:     10
-  verify_results: true
+  max_rounds:     3               # was 10 — lower prevents runaway loops
+  verify_results: false           # disabled: same 3B model verifying itself is noise
 
 agents:
   analyst:

@@ -814,9 +814,7 @@ ollama serve        # start Ollama
 
 ### "model not found — run ollama pull"
 ```bash
-bun run pull        # pulls all models in companion.yaml
-# or directly:
-ollama pull qwen2.5:3b
+ollama pull qwen3:1.7b
 ```
 
 ### TUI shows spinner but no response
@@ -880,7 +878,6 @@ scripts/
   pull.ts     Pulls all Ollama models defined in companion.yaml
 
 skills/       Built-in skill definitions (bash, file-edit, database)
-docs/         This guide and usage examples
 ```
 
 ---
