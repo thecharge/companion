@@ -816,6 +816,7 @@ ollama serve        # start Ollama
 
 ### "model not found — run ollama pull"
 ```bash
+ollama pull nomic-embed-text
 ollama pull qwen3:1.7b
 ```
 
