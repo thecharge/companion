@@ -14,30 +14,30 @@ import type { OAITool } from "@companion/llm";
 // ── Tool types ────────────────────────────────────────────────
 
 export interface ToolContext {
-  session_id:  SessionId;
+  session_id: SessionId;
   working_dir: string;
-  db:          DB;
-  cfg:         Config;
+  db: DB;
+  cfg: Config;
 }
 
 export interface ToolCall {
-  id:        string;
+  id: string;
   tool_name: string;
-  args:      Record<string, unknown>;
+  args: Record<string, unknown>;
 }
 
 export interface ToolResult {
   tool_call_id: string;
-  tool_name:    string;
-  result?:      string;
-  error?:       string;
-  duration_ms:  number;
+  tool_name: string;
+  result?: string;
+  error?: string;
+  duration_ms: number;
 }
 
 export type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>;
 
 export interface ToolDefinition {
-  schema:  OAITool;
+  schema: OAITool;
   handler: ToolHandler;
 }
 
@@ -60,14 +60,14 @@ export class ToolRegistry {
 
   async run(call: ToolCall, ctx: ToolContext): Promise<ToolResult> {
     const start = Date.now();
-    const def   = this.tools.get(call.tool_name);
+    const def = this.tools.get(call.tool_name);
 
     if (!def) {
       return {
         tool_call_id: call.id,
-        tool_name:    call.tool_name,
-        error:        `Unknown tool: ${call.tool_name}`,
-        duration_ms:  Date.now() - start,
+        tool_name: call.tool_name,
+        error: `Unknown tool: ${call.tool_name}`,
+        duration_ms: Date.now() - start,
       };
     }
 
@@ -77,9 +77,9 @@ export class ToolRegistry {
     } catch (e) {
       return {
         tool_call_id: call.id,
-        tool_name:    call.tool_name,
-        error:        String(e),
-        duration_ms:  Date.now() - start,
+        tool_name: call.tool_name,
+        error: String(e),
+        duration_ms: Date.now() - start,
       };
     }
   }
@@ -105,39 +105,39 @@ const readFileTool: ToolDefinition = {
   schema: {
     type: "function",
     function: {
-      name:        "read_file",
+      name: "read_file",
       description: "Read a file, or a specific page of a large file. Use page parameter for large files.",
       parameters: {
         type: "object",
         properties: {
-          path:  { type: "string",  description: "File path relative to working directory" },
-          page:  { type: "number",  description: "Page number (0-based). Default: 0" },
+          path: { type: "string", description: "File path relative to working directory" },
+          page: { type: "number", description: "Page number (0-based). Default: 0" },
         },
         required: ["path"],
       },
     },
   },
   handler: async (args, ctx) => {
-    const rel  = String(args["path"] ?? "");
+    const rel = String(args["path"] ?? "");
     const page = Number(args["page"] ?? 0);
-    const abs  = safePath(ctx.working_dir, rel);
+    const abs = safePath(ctx.working_dir, rel);
     const file = Bun.file(abs);
 
     if (!(await file.exists())) return `Error: file not found: ${rel}`;
 
     const fileSize = file.size;
-    if (fileSize === 0)  return "(empty file)";
+    if (fileSize === 0) return "(empty file)";
 
     // O(1) memory — read only the requested chunk
-    const step      = CHUNK_SIZE;
-    const offset    = page * step;
-    const totalPgs  = Math.ceil(fileSize / step);
+    const step = CHUNK_SIZE;
+    const offset = page * step;
+    const totalPgs = Math.ceil(fileSize / step);
 
     if (offset >= fileSize) {
       return `Error: page ${page} out of range (file has ${totalPgs} page(s))`;
     }
 
-    const buf  = await file.arrayBuffer();
+    const buf = await file.arrayBuffer();
     const text = new TextDecoder().decode(buf.slice(offset, offset + step));
 
     const header = `[Page ${page + 1}/${totalPgs} — ${fileSize} bytes total]`;
@@ -150,12 +150,12 @@ const writeFileTool: ToolDefinition = {
   schema: {
     type: "function",
     function: {
-      name:        "write_file",
+      name: "write_file",
       description: "Write content to a file. Creates the file if it doesn't exist.",
       parameters: {
         type: "object",
         properties: {
-          path:    { type: "string", description: "File path relative to working directory" },
+          path: { type: "string", description: "File path relative to working directory" },
           content: { type: "string", description: "Content to write" },
         },
         required: ["path", "content"],
@@ -163,9 +163,9 @@ const writeFileTool: ToolDefinition = {
     },
   },
   handler: async (args, ctx) => {
-    const rel     = String(args["path"] ?? "");
+    const rel = String(args["path"] ?? "");
     const content = String(args["content"] ?? "");
-    const abs     = safePath(ctx.working_dir, rel);
+    const abs = safePath(ctx.working_dir, rel);
     await Bun.write(abs, content);
     return `Written ${content.length} chars to ${rel}`;
   },
@@ -175,7 +175,7 @@ const listDirTool: ToolDefinition = {
   schema: {
     type: "function",
     function: {
-      name:        "list_dir",
+      name: "list_dir",
       description: "List files and directories at a path.",
       parameters: {
         type: "object",
@@ -193,7 +193,7 @@ const listDirTool: ToolDefinition = {
 
     // Bun.readdir equivalent via node:fs compatibility layer built into Bun
     const { readdir, stat } = await import("node:fs/promises");
-    const items  = await readdir(abs);
+    const items = await readdir(abs);
     for (const item of items.sort()) {
       const s = await stat(join(abs, item)).catch(() => null);
       if (s) entries.push(`${s.isDirectory() ? "d" : "f"} ${item}`);
@@ -206,7 +206,7 @@ const searchHistoryTool: ToolDefinition = {
   schema: {
     type: "function",
     function: {
-      name:        "search_history",
+      name: "search_history",
       description: "Full-text search across message history. Returns KWIC snippets centred on the match.",
       parameters: {
         type: "object",
@@ -221,16 +221,16 @@ const searchHistoryTool: ToolDefinition = {
   handler: async (args, ctx) => {
     const query = String(args["query"] ?? "").toLowerCase();
     const limit = Number(args["limit"] ?? 5);
-    const msgs  = await ctx.db.messages.list(ctx.session_id, { limit: 200 });
+    const msgs = await ctx.db.messages.list(ctx.session_id, { limit: 200 });
 
     const results: string[] = [];
     for (const m of msgs) {
       if (!m.content.toLowerCase().includes(query)) continue;
-      const ts  = m.created_at.toISOString();
-      const lc  = m.content.toLowerCase();
+      const ts = m.created_at.toISOString();
+      const lc = m.content.toLowerCase();
       const idx = lc.indexOf(query);
       const start = Math.max(0, idx - 150);
-      const end   = Math.min(m.content.length, idx + query.length + 150);
+      const end = Math.min(m.content.length, idx + query.length + 150);
       const snippet = (start > 0 ? "..." : "") + m.content.slice(start, end) + (end < m.content.length ? "..." : "");
       results.push(`[${ts}] ${m.role}: ${snippet}`);
       if (results.length >= limit) break;
@@ -257,10 +257,14 @@ export class SandboxExecutor {
     return abs;
   }
 
-  async run(command: string, workingDir: string, timeoutMs = 30_000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  async run(
+    command: string,
+    workingDir: string,
+    timeoutMs = 30_000,
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const safeDir = this.safeWorkingDir(workingDir);
-    const cfg     = this.cfg.tools?.["run_shell"];
-    const image   = cfg?.["image"] ?? "companion-sandbox:latest";
+    const cfg = this.cfg.tools?.["run_shell"];
+    const image = cfg?.["image"] ?? "companion-sandbox:latest";
 
     // Check if Docker is available
     const dockerCheck = Bun.spawn(["docker", "info"], { stdout: "pipe", stderr: "pipe" });
@@ -272,21 +276,22 @@ export class SandboxExecutor {
     if (useDocker) {
       proc = Bun.spawn(
         [
-          "docker", "run", "--rm",
+          "docker",
+          "run",
+          "--rm",
           "--network=none",
           `--label=managed_by=companion`,
           `--volume=${safeDir}:/workspace:rw`,
           "--workdir=/workspace",
           image,
-          "sh", "-c", command,
+          "sh",
+          "-c",
+          command,
         ],
         { stdout: "pipe", stderr: "pipe" },
       );
     } else {
-      proc = Bun.spawn(
-        ["sh", "-c", command],
-        { cwd: safeDir, stdout: "pipe", stderr: "pipe" },
-      );
+      proc = Bun.spawn(["sh", "-c", command], { cwd: safeDir, stdout: "pipe", stderr: "pipe" });
     }
 
     const timeout = setTimeout(() => proc.kill(), timeoutMs);
@@ -305,7 +310,10 @@ export class SandboxExecutor {
   /** Kill all companion-managed containers left from previous crashes */
   async cleanupZombies(): Promise<void> {
     try {
-      const list = Bun.spawn(["docker", "ps", "-a", "-q", "--filter", "label=managed_by=companion"], { stdout: "pipe", stderr: "pipe" });
+      const list = Bun.spawn(["docker", "ps", "-a", "-q", "--filter", "label=managed_by=companion"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       await list.exited;
       const ids = (await new Response(list.stdout).text()).trim();
       if (!ids) return;
@@ -321,7 +329,7 @@ const runShellTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   schema: {
     type: "function",
     function: {
-      name:        "run_shell",
+      name: "run_shell",
       description: "Run a shell command in the sandbox. Working directory is read-write. No network access.",
       parameters: {
         type: "object",
@@ -333,11 +341,11 @@ const runShellTool = (sandbox: SandboxExecutor): ToolDefinition => ({
     },
   },
   handler: async (args, ctx) => {
-    const cmd    = String(args["command"] ?? "");
+    const cmd = String(args["command"] ?? "");
     const result = await sandbox.run(cmd, ctx.working_dir, 30_000);
-    const out    = result.stdout.trim();
-    const err    = result.stderr.trim();
-    const parts  = [`Exit: ${result.exitCode}`];
+    const out = result.stdout.trim();
+    const err = result.stderr.trim();
+    const parts = [`Exit: ${result.exitCode}`];
     if (out) parts.push(`stdout:\n${out}`);
     if (err) parts.push(`stderr:\n${err}`);
     return parts.join("\n");
@@ -348,7 +356,7 @@ const webFetchTool: ToolDefinition = {
   schema: {
     type: "function",
     function: {
-      name:        "web_fetch",
+      name: "web_fetch",
       description: "Fetch the text content of a URL.",
       parameters: {
         type: "object",
@@ -364,11 +372,14 @@ const webFetchTool: ToolDefinition = {
     const cfg = { timeout: 15_000 };
     const res = await fetch(url, { signal: AbortSignal.timeout(cfg.timeout) });
     if (!res.ok) return `HTTP ${res.status}: ${url}`;
-    const ct   = res.headers.get("content-type") ?? "";
+    const ct = res.headers.get("content-type") ?? "";
     const text = await res.text();
     if (ct.includes("html")) {
       // Strip tags — crude but avoids a parser dependency
-      return text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").slice(0, 8000);
+      return text
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .slice(0, 8000);
     }
     return text.slice(0, 8000);
   },
@@ -378,7 +389,7 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   schema: {
     type: "function",
     function: {
-      name:        "run_tests",
+      name: "run_tests",
       description: "Run the test suite in the working directory. Returns pass/fail summary.",
       parameters: {
         type: "object",
@@ -390,24 +401,25 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
     },
   },
   handler: async (args, ctx) => {
-    const cmd    = String(args["command"] ?? "bun test");
+    const cmd = String(args["command"] ?? "bun test");
     const result = await sandbox.run(cmd, ctx.working_dir, 120_000);
-    const out    = result.stdout.trim();
-    const err    = result.stderr.trim();
-    const parts  = [`Exit: ${result.exitCode}`];
-    if (out) parts.push(`stdout:
+    const out = result.stdout.trim();
+    const err = result.stderr.trim();
+    const parts = [`Exit: ${result.exitCode}`];
+    if (out)
+      parts.push(`stdout:
 ${out}`);
-    if (err) parts.push(`stderr:
+    if (err)
+      parts.push(`stderr:
 ${err}`);
-    return parts.join("
-");
+    return parts.join("\n");
   },
 });
 
 // ── Factory ───────────────────────────────────────────────────
 
 export function createToolRegistry(cfg: Config, db: DB): { registry: ToolRegistry; sandbox: SandboxExecutor } {
-  const sandbox  = new SandboxExecutor(cfg);
+  const sandbox = new SandboxExecutor(cfg);
   const registry = new ToolRegistry();
 
   registry.register(readFileTool);
