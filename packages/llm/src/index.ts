@@ -76,7 +76,7 @@ export function modelSupportsTools(model: string): boolean {
   const lower = model.toLowerCase();
   // qwen3 (all sizes) — native tool calling via Ollama /api/chat tools param.
   // Block only models confirmed to NOT support structured tool calls.
-  const noTools = ["qwen2.5:3b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
+  const noTools = ["qwen3:1.7b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
   return !noTools.some((m) => lower.includes(m));
 }
 

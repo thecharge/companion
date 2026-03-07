@@ -39,7 +39,7 @@ for (const [alias, modelCfg] of ollamaModels) {
     process.exit(1);
   }
 
-  // 2. Check if already present (match by name prefix, e.g. "qwen2.5:3b" matches "qwen2.5:3b")
+  // 2. Check if already present (match by name prefix, e.g. "qwen3:1.7b" matches "qwen3:1.7b")
   const alreadyPresent = available.some(
     (n) => n === modelCfg.model || n.startsWith(modelCfg.model.split(":")[0]! + ":"),
   );

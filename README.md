@@ -49,7 +49,7 @@ every actual function call, every prompt, and every response. Nothing is invente
 
 ```bash
 ollama serve                   # Ollama running
-bun run pull                   # qwen2.5:3b is present
+bun run pull                   # qwen3:1.7b is present
 bun server                     # run server
 # on another terminal if you need to use the tui and not using the curl commands
 bun run tui
@@ -110,7 +110,7 @@ content: "What is the current system load?"
 
 `packages/agents/src/index.ts` → `SessionProcessor.handleMessage()`
 
-**Model:** `qwen2.5:3b` via Ollama, `json_mode: true` (Ollama `"format":"json"`)
+**Model:** `qwen3:1.7b` via Ollama, `json_mode: true` (Ollama `"format":"json"`)
 
 **Prompt sent to `http://localhost:11434/v1/chat/completions`:**
 
@@ -135,7 +135,7 @@ Respond with ONLY valid JSON in this exact shape:
 What is the current system load?
 ```
 
-**qwen2.5:3b response:**
+**qwen3:1.7b response:**
 
 ```json
 {"action":"run_agent","target":"engineer","reason":"need to run shell command to check system load"}
@@ -155,9 +155,9 @@ Emits `orchestrator_decision` event → TUI action log shows:
 
 ## Step 3 — Engineer agent runs (ReAct loop)
 
-`AgentRunner.run()` for agent `"engineer"`, model `qwen2.5:3b`
+`AgentRunner.run()` for agent `"engineer"`, model `qwen3:1.7b`
 
-**Key decision:** `modelSupportsTools("qwen2.5:3b")` returns `false` — qwen2.5:3b is in
+**Key decision:** `modelSupportsTools("qwen3:1.7b")` returns `false` — qwen3:1.7b is in
 the `noTools` blocklist. Engineer uses **JSON-mode ReAct**, not structured tool calls.
 
 The engineer's system prompt is built from the blackboard view (`reads_from: [goal, observations, artifacts]`):
@@ -187,7 +187,7 @@ When done:      {"thought":"reasoning","action":"final_answer","result":"your an
 What is the current system load?
 ```
 
-**Turn 1 — qwen2.5:3b responds:**
+**Turn 1 — qwen3:1.7b responds:**
 
 ```json
 {
@@ -267,7 +267,7 @@ stdout:
 0.45 0.38 0.31 2/412 84231
 ```
 
-**qwen2.5:3b responds:**
+**qwen3:1.7b responds:**
 
 ```json
 {
@@ -297,7 +297,7 @@ const shouldVerify = cfg.orchestrator.verify_results &&
 
 Both orchestrator and engineer are `ollama` → `shouldVerify = true` (local verifying local).
 
-Orchestrator (qwen2.5:3b) gets:
+Orchestrator (qwen3:1.7b) gets:
 ```
 Task: What is the current system load?
 Agent reply: The current system load averages are 0.45 (1 min)...
@@ -375,13 +375,13 @@ On **server startup**, the health check already warned:
 
 | Call | Model | Purpose |
 |------|-------|---------|
-| 1 | qwen2.5:3b | Embed recall query |
-| 2 | qwen2.5:3b | Orchestrator decides (Round 1) |
-| 3 | qwen2.5:3b | Engineer Turn 1 — decides to call run_shell |
-| 4 | qwen2.5:3b | Engineer Turn 2 — synthesises tool result |
-| 5 | qwen2.5:3b | Orchestrator verify |
-| 6 | qwen2.5:3b | Orchestrator decides (Round 2) → responder |
-| 7 | qwen2.5:3b | Responder synthesises final reply |
+| 1 | qwen3:1.7b | Embed recall query |
+| 2 | qwen3:1.7b | Orchestrator decides (Round 1) |
+| 3 | qwen3:1.7b | Engineer Turn 1 — decides to call run_shell |
+| 4 | qwen3:1.7b | Engineer Turn 2 — synthesises tool result |
+| 5 | qwen3:1.7b | Orchestrator verify |
+| 6 | qwen3:1.7b | Orchestrator decides (Round 2) → responder |
+| 7 | qwen3:1.7b | Responder synthesises final reply |
 
 **7 calls to local Ollama. Zero API calls. Zero spend.**
 
@@ -616,7 +616,7 @@ Available models: `ollama list` shows what you have. `ollama search <name>` find
 Good options by size:
 | Model | Size | Good for |
 |-------|------|----------|
-| `qwen2.5:3b` | 2GB | Default — fast, decent reasoning |
+| `qwen3:1.7b` | 2GB | Default — fast, decent reasoning |
 | `qwen2.5:7b` | 4.7GB | Better reasoning, still fast |
 | `llama3.2:3b` | 2GB | Good general purpose |
 | `llama3.1:8b` | 4.9GB | Strong reasoning, needs 8GB RAM |
