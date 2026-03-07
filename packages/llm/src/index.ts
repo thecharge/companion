@@ -90,6 +90,8 @@ export class LLMClient {
   /** Non-streaming chat — returns full response */
   async chat(params: ChatParams): Promise<ChatResponse> {
     switch (this.cfg.provider) {
+      case "ollama":
+        return this.ollamaChat(params);
       case "gemini":
         return this.geminiChat(params);
       default:
@@ -100,6 +102,9 @@ export class LLMClient {
   /** Streaming chat — yields text chunks */
   async *stream(messages: ChatMessage[]): AsyncGenerator<string> {
     switch (this.cfg.provider) {
+      case "ollama":
+        yield* this.ollamaStream(messages);
+        break;
       case "gemini":
         yield* this.geminiStream(messages);
         break;
@@ -121,7 +126,123 @@ export class LLMClient {
     }
   }
 
-  // ── OpenAI-compatible (Anthropic, OpenAI, Ollama, Copilot) ──
+  // ── Ollama native API (/api/chat) ─────────────────────────────
+  // Uses the native Ollama endpoint which is available on all versions.
+  // The /v1/chat/completions OpenAI-compat endpoint requires Ollama ≥ 0.1.24
+  // and is not guaranteed to be present.
+
+  private ollamaBase(): string {
+    const configured = this.cfg.base_url?.replace(/\/$/, "");
+    if (configured) {
+      // If the user has explicitly set base_url to the /v1 compat path, strip it
+      return configured.replace(/\/v1$/, "");
+    }
+    return "http://localhost:11434";
+  }
+
+  private toOllamaMessages(messages: ChatMessage[]): Array<{ role: string; content: string }> {
+    return messages.map((m) => ({
+      role: m.role === "tool" ? "user" : m.role,
+      content: m.content ?? (m.tool_calls ? JSON.stringify(m.tool_calls) : ""),
+    }));
+  }
+
+  private async ollamaChat(params: ChatParams): Promise<ChatResponse> {
+    const body: Record<string, unknown> = {
+      model: this.cfg.model,
+      messages: this.toOllamaMessages(params.messages),
+      stream: false,
+      options: {
+        temperature: this.cfg.temperature,
+        num_predict: this.cfg.max_tokens,
+      },
+    };
+
+    if (params.json_mode) {
+      body["format"] = "json";
+    }
+
+    const res = await fetch(`${this.ollamaBase()}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Ollama HTTP ${res.status} (${this.cfg.model}): ${text.slice(0, 300)}`);
+    }
+
+    const data = (await res.json()) as {
+      message: { role: string; content: string };
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
+
+    return {
+      id: `ollama-${Date.now()}`,
+      model: this.cfg.model,
+      choices: [
+        {
+          message: { role: "assistant", content: data.message.content },
+          finish_reason: "stop",
+        },
+      ],
+      usage: {
+        prompt_tokens: data.prompt_eval_count ?? 0,
+        completion_tokens: data.eval_count ?? 0,
+        total_tokens: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+      },
+    };
+  }
+
+  private async *ollamaStream(messages: ChatMessage[]): AsyncGenerator<string> {
+    const res = await fetch(`${this.ollamaBase()}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.cfg.model,
+        messages: this.toOllamaMessages(messages),
+        stream: true,
+        options: { temperature: this.cfg.temperature, num_predict: this.cfg.max_tokens },
+      }),
+      signal: AbortSignal.timeout(300_000),
+    });
+
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Ollama stream ${res.status}: ${text.slice(0, 200)}`);
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const chunk = JSON.parse(line) as { message?: { content?: string }; done?: boolean };
+            if (chunk.message?.content) yield chunk.message.content;
+            if (chunk.done) return;
+          } catch {
+            /* partial line */
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ── OpenAI-compatible (Anthropic, OpenAI, Copilot) ───────────
 
   private baseUrl(): string {
     if (this.cfg.base_url) return this.cfg.base_url.replace(/\/$/, "");
@@ -130,8 +251,6 @@ export class LLMClient {
         return "https://api.anthropic.com/v1";
       case "openai":
         return "https://api.openai.com/v1";
-      case "ollama":
-        return "http://localhost:11434/v1";
       case "copilot":
         return "https://api.githubcopilot.com";
       default:
@@ -165,11 +284,6 @@ export class LLMClient {
     if (params.tools?.length) {
       body["tools"] = params.tools;
       body["tool_choice"] = params.tool_choice ?? "auto";
-    }
-
-    // Ollama JSON mode — forces valid JSON, no regex needed
-    if (params.json_mode && this.cfg.provider === "ollama") {
-      body["format"] = "json";
     }
 
     const res = await fetch(`${this.baseUrl()}/chat/completions`, {

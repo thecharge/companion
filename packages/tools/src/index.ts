@@ -406,12 +406,8 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
     const out = result.stdout.trim();
     const err = result.stderr.trim();
     const parts = [`Exit: ${result.exitCode}`];
-    if (out)
-      parts.push(`stdout:
-${out}`);
-    if (err)
-      parts.push(`stderr:
-${err}`);
+    if (out) parts.push(`stdout:\n${out}`);
+    if (err) parts.push(`stderr:\n${err}`);
     return parts.join("\n");
   },
 });

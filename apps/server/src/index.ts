@@ -448,6 +448,7 @@ async function handleHTTP(req: Request): Promise<Response> {
 Bun.serve<{ session_id: string }>({
   port: cfg.server.port,
   hostname: cfg.server.host,
+  idleTimeout: 0, // disable Bun's 10s default — LLM calls take much longer
 
   fetch(req, server) {
     // WebSocket upgrade
