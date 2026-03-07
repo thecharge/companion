@@ -57,7 +57,7 @@ agents:
     max_turns:   6
 
   engineer:
-    model:       smart   # override with "local" if no API key: set COMPANION_ENGINEER_MODEL=local
+    model:       local   # override with "local" if no API key: set COMPANION_ENGINEER_MODEL=local
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
     tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history]
     reads_from:  [goal, observations, artifacts]
