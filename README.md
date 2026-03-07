@@ -4,6 +4,8 @@ Local-first AI agent system. Bun monorepo, SQLite, Ollama by default.
 
 By Radoslav Sandov
 
+> This codebase is still in progress and will evolve, please stay tunned
+
 ## Requirements - needs to be present before you start
 
 - Bun >= 1.1.0 - installation guide [here](https://bun.com/)
