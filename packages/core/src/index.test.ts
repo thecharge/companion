@@ -28,7 +28,7 @@ describe("Blackboard", () => {
     bb.appendObservation("obs 1");
     bb.setArtifact("file.ts", "content");
     const json = bb.toJSON();
-    const bb2  = Blackboard.fromJSON(json);
+    const bb2 = Blackboard.fromJSON(json);
     expect(bb2.goal).toBe("test goal");
     expect(bb2.read("observations")).toEqual(["obs 1"]);
     expect(bb2.read("artifacts")).toMatchObject({ "file.ts": "content" });
@@ -57,11 +57,11 @@ describe("Blackboard", () => {
   });
 
   test("viewFor returns only requested keys", () => {
-    const bb   = new Blackboard({ goal: "g" });
+    const bb = new Blackboard({ goal: "g" });
     const view = bb.viewFor(["goal", "observations"]);
-    expect("goal"         in view).toBe(true);
+    expect("goal" in view).toBe(true);
     expect("observations" in view).toBe(true);
-    expect("artifacts"    in view).toBe(false);
+    expect("artifacts" in view).toBe(false);
   });
 
   test("fromJSON handles invalid JSON gracefully", () => {

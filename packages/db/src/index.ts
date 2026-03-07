@@ -105,30 +105,30 @@ END;
 
 function rowToSession(r: Record<string, unknown>): Session {
   return {
-    id:            asSession(r["id"] as string),
-    title:         r["title"]         as string,
-    status:        r["status"]        as SessionStatus,
-    mode:          r["mode"]          as SessionMode,
-    blackboard:    r["blackboard"]    as string,
-    summary:       r["summary"]       as string | undefined,
+    id: asSession(r["id"] as string),
+    title: r["title"] as string,
+    status: r["status"] as SessionStatus,
+    mode: r["mode"] as SessionMode,
+    blackboard: r["blackboard"] as string,
+    summary: r["summary"] as string | undefined,
     message_count: r["message_count"] as number,
-    version:       r["version"]       as number,
-    created_at:    new Date(r["created_at"] as string),
-    updated_at:    new Date(r["updated_at"] as string),
+    version: r["version"] as number,
+    created_at: new Date(r["created_at"] as string),
+    updated_at: new Date(r["updated_at"] as string),
   };
 }
 
 function rowToMessage(r: Record<string, unknown>): Message {
   return {
-    id:           asMessage(r["id"] as string),
-    session_id:   asSession(r["session_id"] as string),
-    role:         r["role"]         as Message["role"],
-    content:      r["content"]      as string,
-    tool_calls:   r["tool_calls"]   ? JSON.parse(r["tool_calls"] as string) : undefined,
+    id: asMessage(r["id"] as string),
+    session_id: asSession(r["session_id"] as string),
+    role: r["role"] as Message["role"],
+    content: r["content"] as string,
+    tool_calls: r["tool_calls"] ? JSON.parse(r["tool_calls"] as string) : undefined,
     tool_call_id: r["tool_call_id"] as string | undefined,
-    name:         r["name"]         as string | undefined,
-    tokens:       r["tokens"]       as number | undefined,
-    created_at:   new Date(r["created_at"] as string),
+    name: r["name"] as string | undefined,
+    tokens: r["tokens"] as number | undefined,
+    created_at: new Date(r["created_at"] as string),
   };
 }
 
@@ -171,9 +171,11 @@ class SqliteSessionStore implements SessionStore {
   constructor(private db: Database) {}
 
   async create(id: SessionId, title: string, _goal: string, mode: SessionMode): Promise<Session> {
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO sessions (id, title, mode) VALUES (?, ?, ?)
-    `).run(id, title, mode);
+    `)
+      .run(id, title, mode);
     return (await this.get(id))!;
   }
 
@@ -186,7 +188,10 @@ class SqliteSessionStore implements SessionStore {
     const { status, limit = 50, offset = 0 } = opts;
     let sql = "SELECT * FROM sessions";
     const params: unknown[] = [];
-    if (status) { sql += " WHERE status = ?"; params.push(status); }
+    if (status) {
+      sql += " WHERE status = ?";
+      params.push(status);
+    }
     sql += " ORDER BY updated_at DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
     const rows = this.db.prepare(sql).all(...params) as Record<string, unknown>[];
@@ -202,10 +207,22 @@ class SqliteSessionStore implements SessionStore {
     const sets: string[] = ["updated_at = datetime('now','utc')"];
     const vals: unknown[] = [];
 
-    if (patch.title     !== undefined) { sets.push("title = ?");     vals.push(patch.title); }
-    if (patch.status    !== undefined) { sets.push("status = ?");    vals.push(patch.status); }
-    if (patch.mode      !== undefined) { sets.push("mode = ?");      vals.push(patch.mode); }
-    if (patch.summary   !== undefined) { sets.push("summary = ?");   vals.push(patch.summary); }
+    if (patch.title !== undefined) {
+      sets.push("title = ?");
+      vals.push(patch.title);
+    }
+    if (patch.status !== undefined) {
+      sets.push("status = ?");
+      vals.push(patch.status);
+    }
+    if (patch.mode !== undefined) {
+      sets.push("mode = ?");
+      vals.push(patch.mode);
+    }
+    if (patch.summary !== undefined) {
+      sets.push("summary = ?");
+      vals.push(patch.summary);
+    }
     if (patch.blackboard !== undefined) {
       sets.push("blackboard = ?");
       sets.push("version = version + 1");
@@ -234,18 +251,22 @@ class SqliteSessionStore implements SessionStore {
   }
 
   async search(query: string, limit = 10): Promise<Session[]> {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT s.* FROM sessions s
       JOIN sessions_fts fts ON s.id = fts.id
       WHERE sessions_fts MATCH ?
       ORDER BY rank
       LIMIT ?
-    `).all(query, limit) as Record<string, unknown>[];
+    `)
+      .all(query, limit) as Record<string, unknown>[];
     return rows.map(rowToSession);
   }
 
   async incrementMessageCount(id: SessionId): Promise<void> {
-    this.db.prepare("UPDATE sessions SET message_count = message_count + 1, updated_at = datetime('now','utc') WHERE id = ?").run(id);
+    this.db
+      .prepare("UPDATE sessions SET message_count = message_count + 1, updated_at = datetime('now','utc') WHERE id = ?")
+      .run(id);
   }
 }
 
@@ -253,28 +274,32 @@ class SqliteMessageStore implements MessageStore {
   constructor(private db: Database) {}
 
   async add(msg: Omit<Message, "created_at">): Promise<Message> {
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id, name, tokens)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      msg.id,
-      msg.session_id,
-      msg.role,
-      msg.content,
-      msg.tool_calls ? JSON.stringify(msg.tool_calls) : null,
-      msg.tool_call_id ?? null,
-      msg.name ?? null,
-      msg.tokens ?? null,
-    );
+    `)
+      .run(
+        msg.id,
+        msg.session_id,
+        msg.role,
+        msg.content,
+        msg.tool_calls ? JSON.stringify(msg.tool_calls) : null,
+        msg.tool_call_id ?? null,
+        msg.name ?? null,
+        msg.tokens ?? null,
+      );
     return (await this.get(msg.id))!;
   }
 
   async list(sessionId: SessionId, opts: { limit?: number; offset?: number } = {}): Promise<Message[]> {
     const { limit = 100, offset = 0 } = opts;
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(`
       SELECT * FROM messages WHERE session_id = ?
       ORDER BY created_at ASC LIMIT ? OFFSET ?
-    `).all(sessionId, limit, offset) as Record<string, unknown>[];
+    `)
+      .all(sessionId, limit, offset) as Record<string, unknown>[];
     return rows.map(rowToMessage);
   }
 
@@ -290,7 +315,7 @@ export class SqliteDB implements DB {
   messages: MessageStore;
 
   constructor(path: string) {
-    this.raw      = new Database(path, { create: true });
+    this.raw = new Database(path, { create: true });
     this.raw.exec(SQLITE_SCHEMA);
     this.sessions = new SqliteSessionStore(this.raw);
     this.messages = new SqliteMessageStore(this.raw);

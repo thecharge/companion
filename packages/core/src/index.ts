@@ -27,9 +27,7 @@ export function newId(): string {
 
 // ── Result<T,E> ───────────────────────────────────────────────
 
-export type Result<T, E = Error> =
-  | { ok: true;  value: T }
-  | { ok: false; error: E };
+export type Result<T, E = Error> = { ok: true; value: T } | { ok: false; error: E };
 
 export function ok<T>(value: T): Result<T, never> {
   return { ok: true, value };
@@ -41,55 +39,55 @@ export function err<E>(error: E): Result<never, E> {
 // ── Session / Message types ───────────────────────────────────
 
 export type SessionStatus = "active" | "archived" | "summarised";
-export type SessionMode   = "local" | "balanced" | "cloud";
+export type SessionMode = "local" | "balanced" | "cloud";
 
 export interface Session {
-  id:            SessionId;
-  title:         string;
-  status:        SessionStatus;
-  mode:          SessionMode;
-  blackboard:    string;   // JSON BlackboardData
-  summary?:      string;
+  id: SessionId;
+  title: string;
+  status: SessionStatus;
+  mode: SessionMode;
+  blackboard: string; // JSON BlackboardData
+  summary?: string;
   message_count: number;
-  version:       number;   // OCC — incremented on every update
-  created_at:    Date;
-  updated_at:    Date;
+  version: number; // OCC — incremented on every update
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface Message {
-  id:           MessageId;
-  session_id:   SessionId;
-  role:         "user" | "assistant" | "system" | "tool";
-  content:      string;
-  tool_calls?:  unknown;
+  id: MessageId;
+  session_id: SessionId;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  tool_calls?: unknown;
   tool_call_id?: string;
-  name?:        string;
-  tokens?:      number;
-  created_at:   Date;
+  name?: string;
+  tokens?: number;
+  created_at: Date;
 }
 
 // ── BlackboardData ────────────────────────────────────────────
 
 export interface BlackboardDecision {
-  round:  number;
+  round: number;
   action: string;
   target: string;
   reason: string;
 }
 
 export interface BlackboardRejection {
-  round:  number;
+  round: number;
   target: string;
   reason: string;
 }
 
 export interface BlackboardData {
-  goal:         string;
+  goal: string;
   observations: string[];
-  decisions:    BlackboardDecision[];
-  rejections:   BlackboardRejection[];
-  artifacts:    Record<string, unknown>;
-  scratchpad:   Record<string, unknown>;
+  decisions: BlackboardDecision[];
+  rejections: BlackboardRejection[];
+  artifacts: Record<string, unknown>;
+  scratchpad: Record<string, unknown>;
 }
 
 // ── Blackboard ────────────────────────────────────────────────
@@ -99,12 +97,12 @@ export class Blackboard {
 
   constructor(data?: Partial<BlackboardData>) {
     this.data = {
-      goal:         data?.goal         ?? "",
+      goal: data?.goal ?? "",
       observations: data?.observations ?? [],
-      decisions:    data?.decisions    ?? [],
-      rejections:   data?.rejections   ?? [],
-      artifacts:    data?.artifacts    ?? {},
-      scratchpad:   data?.scratchpad   ?? {},
+      decisions: data?.decisions ?? [],
+      rejections: data?.rejections ?? [],
+      artifacts: data?.artifacts ?? {},
+      scratchpad: data?.scratchpad ?? {},
     };
   }
 
@@ -164,9 +162,9 @@ export class Blackboard {
    * - Artifacts: key names only
    */
   summary(): string {
-    const obs  = this.data.observations.slice(-5);
-    const dec  = this.data.decisions.slice(-6);
-    const rej  = this.data.rejections; // intentionally no slice
+    const obs = this.data.observations.slice(-5);
+    const dec = this.data.decisions.slice(-6);
+    const rej = this.data.rejections; // intentionally no slice
     const arts = Object.keys(this.data.artifacts);
     const lines: string[] = [`Goal: ${this.data.goal}`];
 
@@ -209,10 +207,10 @@ export type EventType =
   | "error";
 
 export interface CompanionEvent {
-  type:       EventType;
+  type: EventType;
   session_id: SessionId;
-  payload:    unknown;
-  ts:         Date;
+  payload: unknown;
+  ts: Date;
 }
 
 type Handler = (event: CompanionEvent) => void;
@@ -244,7 +242,7 @@ export class Logger {
   constructor(private readonly ns: string) {}
 
   private emit(level: LogLevel, msg: string, meta?: unknown): void {
-    const ts  = new Date().toISOString();
+    const ts = new Date().toISOString();
     const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
     if (meta !== undefined) {
       out(`[${ts}] [${level.toUpperCase()}] [${this.ns}] ${msg}`, meta);
@@ -253,8 +251,16 @@ export class Logger {
     }
   }
 
-  debug(msg: string, meta?: unknown): void { this.emit("debug", msg, meta); }
-  info(msg: string, meta?: unknown): void  { this.emit("info", msg, meta); }
-  warn(msg: string, meta?: unknown): void  { this.emit("warn", msg, meta); }
-  error(msg: string, meta?: unknown): void { this.emit("error", msg, meta); }
+  debug(msg: string, meta?: unknown): void {
+    this.emit("debug", msg, meta);
+  }
+  info(msg: string, meta?: unknown): void {
+    this.emit("info", msg, meta);
+  }
+  warn(msg: string, meta?: unknown): void {
+    this.emit("warn", msg, meta);
+  }
+  error(msg: string, meta?: unknown): void {
+    this.emit("error", msg, meta);
+  }
 }

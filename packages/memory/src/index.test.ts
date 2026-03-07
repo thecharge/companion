@@ -4,8 +4,8 @@ import type { ChatMessage } from "@companion/llm";
 
 describe("SlidingWindow", () => {
   test("splits text into chunks", () => {
-    const sw     = new SlidingWindow(100, 20);
-    const text   = "a".repeat(250);
+    const sw = new SlidingWindow(100, 20);
+    const text = "a".repeat(250);
     const chunks = sw.splitIntoChunks(text);
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks[0]!.pageNum).toBe(0);
@@ -18,7 +18,7 @@ describe("SlidingWindow", () => {
   });
 
   test("prefers newline boundary", () => {
-    const sw   = new SlidingWindow(50, 10);
+    const sw = new SlidingWindow(50, 10);
     const text = "line one\n".repeat(20);
     const chunks = sw.splitIntoChunks(text);
     // Each chunk should end at a newline, not mid-word
@@ -30,10 +30,10 @@ describe("SlidingWindow", () => {
 
 describe("ContextBuilder", () => {
   test("builds messages with system prompt", () => {
-    const cb   = new ContextBuilder(40, 8000);
+    const cb = new ContextBuilder(40, 8000);
     const msgs = cb.build({
       systemPrompt: "You are helpful.",
-      history:      [{ role: "user", content: "hello" }],
+      history: [{ role: "user", content: "hello" }],
     });
     expect(msgs[0]!.role).toBe("system");
     expect(msgs[0]!.content).toContain("You are helpful.");
@@ -41,11 +41,11 @@ describe("ContextBuilder", () => {
   });
 
   test("fuses recall into system prompt (single system block)", () => {
-    const cb   = new ContextBuilder(40, 8000);
+    const cb = new ContextBuilder(40, 8000);
     const msgs = cb.build({
       systemPrompt: "Base prompt.",
-      history:      [],
-      recall:       ["memory 1", "memory 2"],
+      history: [],
+      recall: ["memory 1", "memory 2"],
     });
     const systemBlocks = msgs.filter((m) => m.role === "system");
     expect(systemBlocks.length).toBe(1);
@@ -83,7 +83,13 @@ describe("ContextBuilder", () => {
       {
         role: "assistant",
         content: null,
-        tool_calls: [{ id: "x", type: "function", function: { name: "write_file", arguments: '{"path":"a.ts","content":"hello"}' } }],
+        tool_calls: [
+          {
+            id: "x",
+            type: "function",
+            function: { name: "write_file", arguments: '{"path":"a.ts","content":"hello"}' },
+          },
+        ],
       },
     ];
     const tokens = cb.countTokens(msgs);

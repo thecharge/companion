@@ -10,8 +10,8 @@ describe("SqliteDB", () => {
   });
 
   test("creates and retrieves a session", async () => {
-    const id  = asSession(newId());
-    const s   = await db.sessions.create(id, "Test Session", "do something", "local");
+    const id = asSession(newId());
+    const s = await db.sessions.create(id, "Test Session", "do something", "local");
     expect(s.id).toBe(id);
     expect(s.title).toBe("Test Session");
     expect(s.mode).toBe("local");
@@ -40,9 +40,9 @@ describe("SqliteDB", () => {
     // First writer
     await db.sessions.update(id, { blackboard: '{"x":1}', expected_version: 1 });
     // Second writer with stale version should throw
-    expect(
-      db.sessions.update(id, { blackboard: '{"x":2}', expected_version: 1 }),
-    ).rejects.toBeInstanceOf(ConcurrencyError);
+    expect(db.sessions.update(id, { blackboard: '{"x":2}', expected_version: 1 })).rejects.toBeInstanceOf(
+      ConcurrencyError,
+    );
   });
 
   test("lists sessions ordered by updated_at desc", async () => {
@@ -57,10 +57,10 @@ describe("SqliteDB", () => {
     const sid = asSession(newId());
     await db.sessions.create(sid, "Msgs", "g", "local");
     const msg = await db.messages.add({
-      id:         asMessage(newId()),
+      id: asMessage(newId()),
       session_id: sid,
-      role:       "user",
-      content:    "hello",
+      role: "user",
+      content: "hello",
     });
     expect(msg.content).toBe("hello");
     const list = await db.messages.list(sid);

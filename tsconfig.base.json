@@ -1,16 +1,16 @@
 {
   "compilerOptions": {
-    "target":            "ESNext",
-    "module":            "ESNext",
-    "moduleResolution":  "bundler",
-    "lib":               ["ESNext"],
-    "types":             ["bun-types"],
-    "strict":            true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext"],
+    "types": ["bun-types"],
+    "strict": true,
     "exactOptionalPropertyTypes": false,
-    "skipLibCheck":      true,
-    "jsx":               "react-jsx",
-    "jsxImportSource":   "react",
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
     "resolveJsonModule": true,
-    "noEmit":            true
+    "noEmit": true
   }
 }

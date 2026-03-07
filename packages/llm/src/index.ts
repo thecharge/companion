@@ -12,51 +12,51 @@ import type { ModelConfig } from "@companion/config";
 // ── Public types ──────────────────────────────────────────────
 
 export interface ChatMessage {
-  role:          "system" | "user" | "assistant" | "tool";
-  content:       string | null;
-  tool_calls?:   OAIToolCall[];
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: OAIToolCall[];
   tool_call_id?: string;
-  name?:         string;
+  name?: string;
 }
 
 export interface OAIToolCall {
-  id:       string;
-  type:     "function";
+  id: string;
+  type: "function";
   function: { name: string; arguments: string };
 }
 
 export interface OAITool {
-  type:     "function";
+  type: "function";
   function: {
-    name:        string;
+    name: string;
     description: string;
-    parameters:  Record<string, unknown>;
+    parameters: Record<string, unknown>;
   };
 }
 
 export interface ChatChoice {
-  message:       ChatMessage;
+  message: ChatMessage;
   finish_reason: "stop" | "tool_calls" | "length" | null;
 }
 
 export interface UsageStats {
-  prompt_tokens:     number;
+  prompt_tokens: number;
   completion_tokens: number;
-  total_tokens:      number;
+  total_tokens: number;
 }
 
 export interface ChatResponse {
-  id:      string;
-  model:   string;
+  id: string;
+  model: string;
   choices: ChatChoice[];
-  usage?:  UsageStats;
+  usage?: UsageStats;
 }
 
 export interface ChatParams {
-  messages:     ChatMessage[];
-  tools?:       OAITool[];
+  messages: ChatMessage[];
+  tools?: OAITool[];
   tool_choice?: "auto" | "none" | "required";
-  json_mode?:   boolean;
+  json_mode?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -68,7 +68,7 @@ function firstChoice(res: ChatResponse): ChatMessage {
 }
 
 export function isToolCall(msg: ChatMessage): boolean {
-  return !!(msg.tool_calls?.length);
+  return !!msg.tool_calls?.length;
 }
 
 export function modelSupportsTools(model: string): boolean {
@@ -90,25 +90,34 @@ export class LLMClient {
   /** Non-streaming chat — returns full response */
   async chat(params: ChatParams): Promise<ChatResponse> {
     switch (this.cfg.provider) {
-      case "gemini": return this.geminiChat(params);
-      default:       return this.oaiChat(params);
+      case "gemini":
+        return this.geminiChat(params);
+      default:
+        return this.oaiChat(params);
     }
   }
 
   /** Streaming chat — yields text chunks */
   async *stream(messages: ChatMessage[]): AsyncGenerator<string> {
     switch (this.cfg.provider) {
-      case "gemini": yield* this.geminiStream(messages); break;
-      default:       yield* this.oaiStream(messages);    break;
+      case "gemini":
+        yield* this.geminiStream(messages);
+        break;
+      default:
+        yield* this.oaiStream(messages);
+        break;
     }
   }
 
   /** Embeddings — returns float array */
   async embed(text: string): Promise<number[]> {
     switch (this.cfg.provider) {
-      case "ollama":    return this.ollamaEmbed(text);
-      case "gemini":    return this.geminiEmbed(text);
-      default:          return this.oaiEmbed(text);
+      case "ollama":
+        return this.ollamaEmbed(text);
+      case "gemini":
+        return this.geminiEmbed(text);
+      default:
+        return this.oaiEmbed(text);
     }
   }
 
@@ -117,11 +126,16 @@ export class LLMClient {
   private baseUrl(): string {
     if (this.cfg.base_url) return this.cfg.base_url.replace(/\/$/, "");
     switch (this.cfg.provider) {
-      case "anthropic": return "https://api.anthropic.com/v1";
-      case "openai":    return "https://api.openai.com/v1";
-      case "ollama":    return "http://localhost:11434/v1";
-      case "copilot":   return "https://api.githubcopilot.com";
-      default:          return "https://api.openai.com/v1";
+      case "anthropic":
+        return "https://api.anthropic.com/v1";
+      case "openai":
+        return "https://api.openai.com/v1";
+      case "ollama":
+        return "http://localhost:11434/v1";
+      case "copilot":
+        return "https://api.githubcopilot.com";
+      default:
+        return "https://api.openai.com/v1";
     }
   }
 
@@ -130,26 +144,26 @@ export class LLMClient {
     switch (this.cfg.provider) {
       case "anthropic":
         return {
-          "x-api-key":         key,
+          "x-api-key": key,
           "anthropic-version": "2023-06-01",
         };
       case "copilot":
-        return { "Authorization": `Bearer ${key}` };
+        return { Authorization: `Bearer ${key}` };
       default:
-        return key ? { "Authorization": `Bearer ${key}` } : {};
+        return key ? { Authorization: `Bearer ${key}` } : {};
     }
   }
 
   private async oaiChat(params: ChatParams): Promise<ChatResponse> {
     const body: Record<string, unknown> = {
-      model:       this.cfg.model,
-      messages:    params.messages,
-      max_tokens:  this.cfg.max_tokens,
+      model: this.cfg.model,
+      messages: params.messages,
+      max_tokens: this.cfg.max_tokens,
       temperature: this.cfg.temperature,
     };
 
     if (params.tools?.length) {
-      body["tools"]       = params.tools;
+      body["tools"] = params.tools;
       body["tool_choice"] = params.tool_choice ?? "auto";
     }
 
@@ -159,10 +173,10 @@ export class LLMClient {
     }
 
     const res = await fetch(`${this.baseUrl()}/chat/completions`, {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json", ...this.authHeaders() },
-      body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(180_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
     });
 
     if (!res.ok) {
@@ -175,14 +189,14 @@ export class LLMClient {
 
   private async *oaiStream(messages: ChatMessage[]): AsyncGenerator<string> {
     const res = await fetch(`${this.baseUrl()}/chat/completions`, {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json", ...this.authHeaders() },
-      body:    JSON.stringify({
-        model:       this.cfg.model,
+      body: JSON.stringify({
+        model: this.cfg.model,
         messages,
-        max_tokens:  this.cfg.max_tokens,
+        max_tokens: this.cfg.max_tokens,
         temperature: this.cfg.temperature,
-        stream:      true,
+        stream: true,
       }),
       signal: AbortSignal.timeout(300_000),
     });
@@ -193,8 +207,8 @@ export class LLMClient {
     }
 
     const reader = res.body.getReader();
-    const dec    = new TextDecoder();
-    let   buf    = "";
+    const dec = new TextDecoder();
+    let buf = "";
 
     try {
       while (true) {
@@ -210,7 +224,7 @@ export class LLMClient {
           if (data === "[DONE]") return;
           try {
             const chunk = JSON.parse(data) as { choices: Array<{ delta: { content?: string } }> };
-            const text  = chunk.choices[0]?.delta?.content;
+            const text = chunk.choices[0]?.delta?.content;
             if (text) yield text;
           } catch (e) {
             // Partial frame — accumulate and let next read complete it
@@ -229,14 +243,14 @@ export class LLMClient {
 
   private async oaiEmbed(text: string): Promise<number[]> {
     const res = await fetch(`${this.baseUrl()}/embeddings`, {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json", ...this.authHeaders() },
-      body:    JSON.stringify({ model: this.cfg.model, input: text }),
-      signal:  AbortSignal.timeout(30_000),
+      body: JSON.stringify({ model: this.cfg.model, input: text }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error(`Embed ${res.status}`);
-    const data = await res.json() as { data: Array<{ embedding: number[] }> };
-    const emb  = data.data[0]?.embedding;
+    const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
+    const emb = data.data[0]?.embedding;
     if (!emb) throw new Error("No embedding returned");
     return emb;
   }
@@ -245,22 +259,22 @@ export class LLMClient {
 
   private async ollamaEmbed(text: string): Promise<number[]> {
     const base = (this.cfg.base_url ?? "http://localhost:11434").replace(/\/$/, "");
-    const res  = await fetch(`${base}/api/embeddings`, {
-      method:  "POST",
+    const res = await fetch(`${base}/api/embeddings`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ model: this.cfg.model, prompt: text }),
-      signal:  AbortSignal.timeout(30_000),
+      body: JSON.stringify({ model: this.cfg.model, prompt: text }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error(`Ollama embed ${res.status}`);
-    const data = await res.json() as { embedding: number[] };
+    const data = (await res.json()) as { embedding: number[] };
     return data.embedding;
   }
 
   // ── Gemini ────────────────────────────────────────────────
 
   private geminiEndpoint(stream = false): string {
-    const base  = (this.cfg.base_url ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
-    const key   = this.cfg.api_key ? `?key=${this.cfg.api_key}` : "";
+    const base = (this.cfg.base_url ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
+    const key = this.cfg.api_key ? `?key=${this.cfg.api_key}` : "";
     const action = stream ? "streamGenerateContent" : "generateContent";
     return `${base}/models/${this.cfg.model}:${action}${key}`;
   }
@@ -273,7 +287,7 @@ export class LLMClient {
       // TODO: migrate to top-level systemInstruction when API stabilises
       // Ref: https://ai.google.dev/gemini-api/docs/system-instructions
       if (m.role === "system") {
-        contents.push({ role: "user",  parts: [{ text: `[System]: ${m.content ?? ""}` }] });
+        contents.push({ role: "user", parts: [{ text: `[System]: ${m.content ?? ""}` }] });
         contents.push({ role: "model", parts: [{ text: "Understood." }] });
         continue;
       }
@@ -287,13 +301,15 @@ export class LLMClient {
           responseObj = { result: m.content ?? "" };
         }
         contents.push({
-          role:  "user",
-          parts: [{
-            functionResponse: {
-              name:     m.name ?? m.tool_call_id ?? "unknown_tool",
-              response: responseObj,
+          role: "user",
+          parts: [
+            {
+              functionResponse: {
+                name: m.name ?? m.tool_call_id ?? "unknown_tool",
+                response: responseObj,
+              },
             },
-          }],
+          ],
         });
         continue;
       }
@@ -301,13 +317,16 @@ export class LLMClient {
       // OpenAI assistant tool_calls → Gemini functionCall parts
       if (m.role === "assistant" && m.tool_calls?.length) {
         contents.push({
-          role:  "model",
+          role: "model",
           parts: m.tool_calls.map((tc) => ({
             functionCall: {
               name: tc.function.name,
               args: (() => {
-                try { return JSON.parse(tc.function.arguments) as Record<string, unknown>; }
-                catch { return {}; }
+                try {
+                  return JSON.parse(tc.function.arguments) as Record<string, unknown>;
+                } catch {
+                  return {};
+                }
               })(),
             },
           })),
@@ -324,26 +343,28 @@ export class LLMClient {
 
   private async geminiChat(params: ChatParams): Promise<ChatResponse> {
     const body: Record<string, unknown> = {
-      contents:         this.toGeminiContents(params.messages),
+      contents: this.toGeminiContents(params.messages),
       generationConfig: { temperature: this.cfg.temperature, maxOutputTokens: this.cfg.max_tokens },
     };
 
     if (params.tools?.length) {
-      body["tools"] = [{
-        functionDeclarations: params.tools.map((t) => ({
-          name:        t.function.name,
-          description: t.function.description,
-          parameters:  t.function.parameters,
-        })),
-      }];
+      body["tools"] = [
+        {
+          functionDeclarations: params.tools.map((t) => ({
+            name: t.function.name,
+            description: t.function.description,
+            parameters: t.function.parameters,
+          })),
+        },
+      ];
       body["toolConfig"] = { functionCallingConfig: { mode: "AUTO" } };
     }
 
     const res = await fetch(this.geminiEndpoint(), {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(180_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
     });
 
     if (!res.ok) {
@@ -351,60 +372,72 @@ export class LLMClient {
       throw new Error(`Gemini ${res.status}: ${text.slice(0, 300)}`);
     }
 
-    const data   = await res.json() as Record<string, unknown>;
-    const cands  = data["candidates"] as Array<Record<string, unknown>> | undefined;
-    const parts  = (cands?.[0]?.["content"] as Record<string, unknown> | undefined)?.["parts"] as Array<Record<string, unknown>> | undefined ?? [];
-    const usage  = data["usageMetadata"] as { promptTokenCount: number; candidatesTokenCount: number } | undefined;
+    const data = (await res.json()) as Record<string, unknown>;
+    const cands = data["candidates"] as Array<Record<string, unknown>> | undefined;
+    const parts =
+      ((cands?.[0]?.["content"] as Record<string, unknown> | undefined)?.["parts"] as
+        | Array<Record<string, unknown>>
+        | undefined) ?? [];
+    const usage = data["usageMetadata"] as { promptTokenCount: number; candidatesTokenCount: number } | undefined;
 
     const usageOut = usage
-      ? { prompt_tokens: usage.promptTokenCount, completion_tokens: usage.candidatesTokenCount, total_tokens: usage.promptTokenCount + usage.candidatesTokenCount }
+      ? {
+          prompt_tokens: usage.promptTokenCount,
+          completion_tokens: usage.candidatesTokenCount,
+          total_tokens: usage.promptTokenCount + usage.candidatesTokenCount,
+        }
       : undefined;
 
     // functionCall parts → OpenAI tool_calls
     const fnCalls = parts.filter((p) => p["functionCall"]);
     if (fnCalls.length) {
       return {
-        id:      `gemini-${Date.now()}`,
-        model:   this.cfg.model,
-        choices: [{
-          finish_reason: "tool_calls",
-          message: {
-            role:    "assistant",
-            content: null,
-            tool_calls: fnCalls.map((p, i) => ({
-              id:   `call_${Date.now()}_${i}`,
-              type: "function" as const,
-              function: {
-                name:      String((p["functionCall"] as Record<string, unknown>)["name"]),
-                arguments: JSON.stringify((p["functionCall"] as Record<string, unknown>)["args"] ?? {}),
-              },
-            })),
+        id: `gemini-${Date.now()}`,
+        model: this.cfg.model,
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: fnCalls.map((p, i) => ({
+                id: `call_${Date.now()}_${i}`,
+                type: "function" as const,
+                function: {
+                  name: String((p["functionCall"] as Record<string, unknown>)["name"]),
+                  arguments: JSON.stringify((p["functionCall"] as Record<string, unknown>)["args"] ?? {}),
+                },
+              })),
+            },
           },
-        }],
+        ],
         usage: usageOut,
       };
     }
 
-    const text = parts.filter((p) => p["text"]).map((p) => String(p["text"])).join("");
+    const text = parts
+      .filter((p) => p["text"])
+      .map((p) => String(p["text"]))
+      .join("");
     return {
-      id:      `gemini-${Date.now()}`,
-      model:   this.cfg.model,
+      id: `gemini-${Date.now()}`,
+      model: this.cfg.model,
       choices: [{ message: { role: "assistant", content: text }, finish_reason: "stop" }],
-      usage:   usageOut,
+      usage: usageOut,
     };
   }
 
   private async *geminiStream(messages: ChatMessage[]): AsyncGenerator<string> {
     const body = {
-      contents:         this.toGeminiContents(messages),
+      contents: this.toGeminiContents(messages),
       generationConfig: { temperature: this.cfg.temperature, maxOutputTokens: this.cfg.max_tokens },
     };
 
     const res = await fetch(this.geminiEndpoint(true), {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(300_000),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(300_000),
     });
 
     if (!res.ok || !res.body) {
@@ -413,8 +446,8 @@ export class LLMClient {
     }
 
     const reader = res.body.getReader();
-    const dec    = new TextDecoder();
-    let   buf    = "";
+    const dec = new TextDecoder();
+    let buf = "";
 
     try {
       while (true) {
@@ -429,7 +462,7 @@ export class LLMClient {
           if (!trimmed || trimmed === "[" || trimmed === "]" || trimmed === ",") continue;
           try {
             const chunk = JSON.parse(trimmed) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> };
-            const text  = chunk.candidates[0]?.content?.parts.map((p) => p.text).join("") ?? "";
+            const text = chunk.candidates[0]?.content?.parts.map((p) => p.text).join("") ?? "";
             if (text) yield text;
           } catch (e) {
             if (trimmed.startsWith("{") && !trimmed.endsWith("}")) {
@@ -447,15 +480,15 @@ export class LLMClient {
 
   private async geminiEmbed(text: string): Promise<number[]> {
     const base = (this.cfg.base_url ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/$/, "");
-    const key  = this.cfg.api_key ? `?key=${this.cfg.api_key}` : "";
-    const res  = await fetch(`${base}/models/${this.cfg.model}:embedContent${key}`, {
-      method:  "POST",
+    const key = this.cfg.api_key ? `?key=${this.cfg.api_key}` : "";
+    const res = await fetch(`${base}/models/${this.cfg.model}:embedContent${key}`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ model: this.cfg.model, content: { parts: [{ text }] } }),
-      signal:  AbortSignal.timeout(30_000),
+      body: JSON.stringify({ model: this.cfg.model, content: { parts: [{ text }] } }),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) throw new Error(`Gemini embed ${res.status}`);
-    const data = await res.json() as { embedding: { values: number[] } };
+    const data = (await res.json()) as { embedding: { values: number[] } };
     return data.embedding.values;
   }
 }

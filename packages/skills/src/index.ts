@@ -15,27 +15,27 @@ import type { ToolRegistry, ToolContext } from "@companion/tools";
 // ── Skill schema (runtime validated, not Zod — keeps dep tree clean) ──
 
 interface SkillParam {
-  type:        "string" | "number" | "boolean";
+  type: "string" | "number" | "boolean";
   description: string;
-  required?:   boolean;
+  required?: boolean;
 }
 
 interface SkillTool {
-  name:         string;
-  description:  string;
-  parameters:   Record<string, SkillParam>;
-  script?:      string;
+  name: string;
+  description: string;
+  parameters: Record<string, SkillParam>;
+  script?: string;
   script_file?: string;
-  timeout?:     number;
+  timeout?: number;
 }
 
 export interface Skill {
-  name:        string;
-  version:     string;
+  name: string;
+  version: string;
   description: string;
-  tags?:       string[];
-  prompt?:     string;
-  tools:       SkillTool[];
+  tags?: string[];
+  prompt?: string;
+  tools: SkillTool[];
 }
 
 // ── Loader ────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export async function loadSkillsDir(dir: string): Promise<Skill[]> {
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const yamlPath = join(dir, entry.name, "skill.yaml");
-        const skill    = await loadSkillFile(yamlPath);
+        const skill = await loadSkillFile(yamlPath);
         if (skill) skills.push(skill);
       } else if (entry.name.endsWith(".skill.yaml")) {
         const skill = await loadSkillFile(join(dir, entry.name));
@@ -71,7 +71,7 @@ async function loadSkillFile(path: string): Promise<Skill | null> {
   const file = Bun.file(path);
   if (!(await file.exists())) return null;
   try {
-    const raw  = await file.text();
+    const raw = await file.text();
     const data = parseYaml(raw) as Skill;
     if (!data.name || !Array.isArray(data.tools)) return null;
     return data;
@@ -90,15 +90,12 @@ export function registerSkills(skills: Skill[], registry: ToolRegistry): void {
         schema: {
           type: "function",
           function: {
-            name:        tool.name,
+            name: tool.name,
             description: tool.description,
             parameters: {
-              type:       "object",
+              type: "object",
               properties: Object.fromEntries(
-                Object.entries(tool.parameters).map(([k, v]) => [
-                  k,
-                  { type: v.type, description: v.description },
-                ]),
+                Object.entries(tool.parameters).map(([k, v]) => [k, { type: v.type, description: v.description }]),
               ),
               required: Object.entries(tool.parameters)
                 .filter(([, v]) => v.required !== false)
@@ -112,21 +109,17 @@ export function registerSkills(skills: Skill[], registry: ToolRegistry): void {
   }
 }
 
-function makeHandler(
-  skill:   Skill,
-  tool:    SkillTool,
-  _dir:    string,
-) {
+function makeHandler(skill: Skill, tool: SkillTool, _dir: string) {
   return async (args: Record<string, unknown>, ctx: ToolContext): Promise<string> => {
     const timeoutMs = (tool.timeout ?? 30) * 1000;
 
     // Build safe environment — server secrets NEVER forwarded
     const safeEnv: Record<string, string> = {
-      PATH:        process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin",
-      HOME:        process.env["HOME"] ?? "/tmp",
-      TMPDIR:      process.env["TMPDIR"] ?? "/tmp",
+      PATH: process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: process.env["HOME"] ?? "/tmp",
+      TMPDIR: process.env["TMPDIR"] ?? "/tmp",
       WORKING_DIR: ctx.working_dir,
-      SESSION_ID:  String(ctx.session_id),
+      SESSION_ID: String(ctx.session_id),
     };
 
     // Arguments as COMPANION_ARG_* — OS process boundary, not string interpolation
@@ -137,15 +130,16 @@ function makeHandler(
     const script = tool.script ?? "";
     if (!script.trim()) return "Error: skill tool has no script";
 
-    const interpreter = script.trimStart().startsWith("import ") ||
+    const interpreter =
+      script.trimStart().startsWith("import ") ||
       script.trimStart().startsWith("const ") ||
       script.trimStart().startsWith("import {")
-      ? ["bun", "run", "-e", script]
-      : ["bash", "-c", script];
+        ? ["bun", "run", "-e", script]
+        : ["bash", "-c", script];
 
     const proc = Bun.spawn(interpreter, {
-      cwd:    ctx.working_dir,
-      env:    safeEnv,
+      cwd: ctx.working_dir,
+      env: safeEnv,
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -158,8 +152,8 @@ function makeHandler(
       clearTimeout(timeout);
     }
 
-    const stdout   = await new Response(proc.stdout).text();
-    const stderr   = await new Response(proc.stderr).text();
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
     const exitCode = proc.exitCode ?? 1;
 
     if (exitCode !== 0) {

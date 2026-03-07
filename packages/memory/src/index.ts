@@ -14,18 +14,18 @@ import type { ChatMessage } from "@companion/llm";
 // ── VectorStore ───────────────────────────────────────────────
 
 export interface VectorEntry {
-  id:         string;
+  id: string;
   session_id: string;
-  content:    string;
-  embedding:  number[];
-  metadata?:  Record<string, unknown>;
+  content: string;
+  embedding: number[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface VectorSearchResult {
-  id:         string;
-  content:    string;
-  score:      number;
-  metadata?:  Record<string, unknown>;
+  id: string;
+  content: string;
+  score: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface VectorStore {
@@ -38,11 +38,13 @@ export interface VectorStore {
 // Cosine similarity — used as fallback when sqlite-vec is unavailable
 function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, na = 0, nb = 0;
+  let dot = 0,
+    na = 0,
+    nb = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += (a[i]! * b[i]!);
-    na  += (a[i]! * a[i]!);
-    nb  += (b[i]! * b[i]!);
+    dot += a[i]! * b[i]!;
+    na += a[i]! * a[i]!;
+    nb += b[i]! * b[i]!;
   }
   const denom = Math.sqrt(na) * Math.sqrt(nb);
   return denom === 0 ? 0 : dot / denom;
@@ -56,7 +58,7 @@ function cosine(a: number[], b: number[]): number {
  * The fallback is correct but slower for large corpora.
  */
 export class SqliteVecStore implements VectorStore {
-  private db:        Database;
+  private db: Database;
   private nativeVec: boolean = false;
 
   constructor(dbPath: string) {
@@ -72,7 +74,9 @@ export class SqliteVecStore implements VectorStore {
       vec.load(this.db);
       this.nativeVec = true;
     } catch {
-      console.warn("[memory] sqlite-vec extension unavailable — using JS cosine fallback. Install sqlite-vec for production.");
+      console.warn(
+        "[memory] sqlite-vec extension unavailable — using JS cosine fallback. Install sqlite-vec for production.",
+      );
     }
 
     this.db.exec(`
@@ -90,40 +94,31 @@ export class SqliteVecStore implements VectorStore {
 
   async upsert(entry: VectorEntry): Promise<void> {
     const embBytes = new Float32Array(entry.embedding).buffer;
-    this.db.prepare(`
+    this.db
+      .prepare(`
       INSERT INTO vectors (id, session_id, content, embedding, metadata)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         content    = excluded.content,
         embedding  = excluded.embedding,
         metadata   = excluded.metadata
-    `).run(
-      entry.id,
-      entry.session_id,
-      entry.content,
-      embBytes,
-      entry.metadata ? JSON.stringify(entry.metadata) : null,
-    );
+    `)
+      .run(entry.id, entry.session_id, entry.content, embBytes, entry.metadata ? JSON.stringify(entry.metadata) : null);
   }
 
-  async search(
-    sessionId: string,
-    query: number[],
-    topK: number,
-    minScore: number,
-  ): Promise<VectorSearchResult[]> {
-    const rows = this.db.prepare(
-      "SELECT id, content, embedding, metadata FROM vectors WHERE session_id = ?",
-    ).all(sessionId) as Array<{ id: string; content: string; embedding: ArrayBuffer; metadata: string | null }>;
+  async search(sessionId: string, query: number[], topK: number, minScore: number): Promise<VectorSearchResult[]> {
+    const rows = this.db
+      .prepare("SELECT id, content, embedding, metadata FROM vectors WHERE session_id = ?")
+      .all(sessionId) as Array<{ id: string; content: string; embedding: ArrayBuffer; metadata: string | null }>;
 
     const scored = rows.map((row) => {
-      const emb  = Array.from(new Float32Array(row.embedding));
+      const emb = Array.from(new Float32Array(row.embedding));
       const score = cosine(query, emb);
       return {
-        id:       row.id,
-        content:  row.content,
+        id: row.id,
+        content: row.content,
         score,
-        metadata: row.metadata ? JSON.parse(row.metadata) as Record<string, unknown> : undefined,
+        metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,
       };
     });
 
@@ -145,22 +140,22 @@ export class SqliteVecStore implements VectorStore {
 // ── SlidingWindow ─────────────────────────────────────────────
 
 export interface Chunk {
-  content:    string;
-  pageNum:    number;
+  content: string;
+  pageNum: number;
   totalPages: number;
-  charStart:  number;
-  charEnd:    number;
+  charStart: number;
+  charEnd: number;
 }
 
 export class SlidingWindow {
   constructor(
     private chunkSize: number = 2000,
-    private overlap:   number = 200,
+    private overlap: number = 200,
   ) {}
 
   splitIntoChunks(text: string): Chunk[] {
     if (!text.length) return [];
-    const step   = this.chunkSize - this.overlap;
+    const step = this.chunkSize - this.overlap;
     const chunks: Chunk[] = [];
     let pos = 0;
 
@@ -181,11 +176,11 @@ export class SlidingWindow {
       }
 
       chunks.push({
-        content:   text.slice(pos, end),
-        pageNum:   chunks.length,
+        content: text.slice(pos, end),
+        pageNum: chunks.length,
         totalPages: 0, // filled below
         charStart: pos,
-        charEnd:   end,
+        charEnd: end,
       });
 
       pos += step;
@@ -210,13 +205,13 @@ export class SlidingWindow {
 export class ContextBuilder {
   constructor(
     private maxMessages: number = 40,
-    private maxTokens:   number = 8000,
+    private maxTokens: number = 8000,
   ) {}
 
   build(opts: {
     systemPrompt: string;
-    history:      ChatMessage[];
-    recall?:      string[];
+    history: ChatMessage[];
+    recall?: string[];
   }): ChatMessage[] {
     const { systemPrompt, history, recall = [] } = opts;
 
@@ -225,10 +220,7 @@ export class ContextBuilder {
       system += `\n\n--- Relevant memories ---\n${recall.map((r, i) => `[${i + 1}] ${r}`).join("\n")}`;
     }
 
-    const messages: ChatMessage[] = [
-      { role: "system", content: system },
-      ...history,
-    ];
+    const messages: ChatMessage[] = [{ role: "system", content: system }, ...history];
 
     return this.trim(messages);
   }
@@ -285,25 +277,17 @@ export class ContextBuilder {
 
 export class MemoryService {
   private context: ContextBuilder;
-  private window:  SlidingWindow;
+  private window: SlidingWindow;
 
   constructor(
     private vectors: VectorStore,
-    private cfg:     Config,
+    private cfg: Config,
   ) {
-    this.context = new ContextBuilder(
-      cfg.memory.context_window.max_messages,
-      cfg.memory.context_window.max_tokens,
-    );
-    this.window = new SlidingWindow(
-      cfg.memory.sliding_window.chunk_size,
-    );
+    this.context = new ContextBuilder(cfg.memory.context_window.max_messages, cfg.memory.context_window.max_tokens);
+    this.window = new SlidingWindow(cfg.memory.sliding_window.chunk_size);
   }
 
-  async recall(
-    sessionId: SessionId,
-    queryEmbedding: number[],
-  ): Promise<string[]> {
+  async recall(sessionId: SessionId, queryEmbedding: number[]): Promise<string[]> {
     const results = await this.vectors.search(
       sessionId,
       queryEmbedding,
@@ -315,8 +299,8 @@ export class MemoryService {
 
   async store(
     sessionId: SessionId,
-    id:        string,
-    content:   string,
+    id: string,
+    content: string,
     embedding: number[],
     metadata?: Record<string, unknown>,
   ): Promise<void> {
@@ -325,8 +309,8 @@ export class MemoryService {
 
   buildContext(opts: {
     systemPrompt: string;
-    history:      ChatMessage[];
-    recall?:      string[];
+    history: ChatMessage[];
+    recall?: string[];
   }): ChatMessage[] {
     return this.context.build(opts);
   }

@@ -40,9 +40,9 @@ const log = new Logger("server");
 
 // ── Bootstrap ─────────────────────────────────────────────────
 
-const cfg    = await loadConfig("./companion.yaml");
-const store  = new ConfigStore(cfg);
-const db     = await createDB(cfg);
+const cfg = await loadConfig("./companion.yaml");
+const store = new ConfigStore(cfg);
+const db = await createDB(cfg);
 const vectors = new SqliteVecStore(cfg.db.sqlite.path.replace(".db", "-vec.db"));
 const { registry, sandbox } = createToolRegistry(cfg, db);
 
@@ -56,7 +56,7 @@ registry.register({
   schema: {
     type: "function",
     function: {
-      name:        "search_memory",
+      name: "search_memory",
       description: "Semantic search across past conversation memories for this session.",
       parameters: {
         type: "object",
@@ -70,11 +70,11 @@ registry.register({
   },
   handler: async (args, ctx) => {
     try {
-      const query      = String(args["query"] ?? "");
-      const limit      = Number(args["limit"] ?? 5);
+      const query = String(args["query"] ?? "");
+      const limit = Number(args["limit"] ?? 5);
       const queryEmbed = await embedClient.embed(query);
-      const results    = await memory.recall(ctx.session_id, queryEmbed);
-      const top        = results.slice(0, limit);
+      const results = await memory.recall(ctx.session_id, queryEmbed);
+      const top = results.slice(0, limit);
       return top.length ? top.map((r, i) => `[${i + 1}] ${r}`).join("\n\n") : "No memories found.";
     } catch (e) {
       return `search_memory error: ${e}`;
@@ -83,21 +83,21 @@ registry.register({
 });
 
 // Embedding model for memory recall
-const embedCfg    = cfg.models[cfg.orchestrator.model]!;
+const embedCfg = cfg.models[cfg.orchestrator.model]!;
 const embedClient = createLLMClient(embedCfg);
-const memory      = new MemoryService(vectors, cfg);
+const memory = new MemoryService(vectors, cfg);
 
 // ── Active task tracking (for WS sync_state on reconnect) ────
 
 interface ActiveTaskState {
-  agent:   string;
-  tool?:   string;
+  agent: string;
+  tool?: string;
   thought?: string;
-  status:  "thinking" | "running_tool" | "synthesizing";
+  status: "thinking" | "running_tool" | "synthesizing";
 }
 const activeTasks = new Map<string, ActiveTaskState>();
 
-bus.on("agent_start",   (e) => {
+bus.on("agent_start", (e) => {
   const p = e.payload as Record<string, unknown>;
   activeTasks.set(e.session_id, { agent: String(p["agent"] ?? ""), status: "thinking" });
 });
@@ -107,14 +107,24 @@ bus.on("agent_thought", (e) => {
 });
 bus.on("tool_start", (e) => {
   const t = activeTasks.get(e.session_id);
-  if (t) { t.tool = String((e.payload as Record<string, unknown>)["tool"] ?? ""); t.status = "running_tool"; }
+  if (t) {
+    t.tool = String((e.payload as Record<string, unknown>)["tool"] ?? "");
+    t.status = "running_tool";
+  }
 });
-bus.on("tool_end",   (e) => {
+bus.on("tool_end", (e) => {
   const t = activeTasks.get(e.session_id);
-  if (t) { t.tool = undefined; t.status = "thinking"; }
+  if (t) {
+    t.tool = undefined;
+    t.status = "thinking";
+  }
 });
-bus.on("agent_end",  (e) => { activeTasks.delete(e.session_id); });
-bus.on("message",    (e) => { activeTasks.delete(e.session_id); });
+bus.on("agent_end", (e) => {
+  activeTasks.delete(e.session_id);
+});
+bus.on("message", (e) => {
+  activeTasks.delete(e.session_id);
+});
 
 // ── WebSocket subscriptions ───────────────────────────────────
 
@@ -132,8 +142,11 @@ function broadcast(sid: string, event: CompanionEvent): void {
   if (!clients) return;
   const payload = JSON.stringify({ ...event, ts: event.ts.toISOString() });
   for (const ws of clients) {
-    try { ws.send(payload); }
-    catch { clients.delete(ws); }
+    try {
+      ws.send(payload);
+    } catch {
+      clients.delete(ws);
+    }
   }
 }
 
@@ -148,37 +161,40 @@ function authed(req: Request): boolean {
 }
 
 const E401 = () => Response.json({ error: "Unauthorized" }, { status: 401 });
-const E404 = () => Response.json({ error: "Not found" },    { status: 404 });
+const E404 = () => Response.json({ error: "Not found" }, { status: 404 });
 const E400 = (msg: string) => Response.json({ error: msg }, { status: 400 });
 
 // ── Message processor ─────────────────────────────────────────
 
 async function processMessage(
-  sid:        SessionId,
-  session:    Awaited<ReturnType<typeof db.sessions.get>>,
-  content:    string,
+  sid: SessionId,
+  session: Awaited<ReturnType<typeof db.sessions.get>>,
+  content: string,
   workingDir: string,
 ): Promise<void> {
   if (!session) return;
 
-  const sessionCfg  = store.get(sid);
-  const history     = await db.messages.list(sid, { limit: sessionCfg.memory.context_window.max_messages });
-  const bb          = Blackboard.fromJSON(session.blackboard);
+  const sessionCfg = store.get(sid);
+  const history = await db.messages.list(sid, { limit: sessionCfg.memory.context_window.max_messages });
+  const bb = Blackboard.fromJSON(session.blackboard);
 
   const historyMsgs = history.map((m) => ({
-    role:         m.role as "user" | "assistant" | "system" | "tool",
-    content:      m.content,
-    tool_calls:   m.tool_calls as import("@companion/llm").OAIToolCall[] | undefined,
+    role: m.role as "user" | "assistant" | "system" | "tool",
+    content: m.content,
+    tool_calls: m.tool_calls as import("@companion/llm").OAIToolCall[] | undefined,
     tool_call_id: m.tool_call_id,
-    name:         m.name,
+    name: m.name,
   }));
 
   // Recall — enrich query with goal + latest observation for short messages
   let recallTexts: string[] = [];
   try {
-    const recallQuery = [content, bb.goal, bb.read("observations").slice(-1)[0] ?? ""].filter(Boolean).join(" ").slice(0, 500);
-    const queryEmbed  = await embedClient.embed(recallQuery);
-    recallTexts       = await memory.recall(sid, queryEmbed);
+    const recallQuery = [content, bb.goal, bb.read("observations").slice(-1)[0] ?? ""]
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 500);
+    const queryEmbed = await embedClient.embed(recallQuery);
+    recallTexts = await memory.recall(sid, queryEmbed);
   } catch (e) {
     log.warn("Recall failed (continuing without)", e);
   }
@@ -189,26 +205,26 @@ async function processMessage(
 
   try {
     const result = await processor.handleMessage({
-      session_id:   sid,
-      blackboard:   bb,
+      session_id: sid,
+      blackboard: bb,
       user_message: content,
-      history:      historyMsgs,
-      working_dir:  workingDir,
-      mode:         session.mode,
+      history: historyMsgs,
+      working_dir: workingDir,
+      mode: session.mode,
     });
 
     const assistantMsg = await db.messages.add({
-      id:         asMessage(newId()),
+      id: asMessage(newId()),
       session_id: sid,
-      role:       "assistant",
-      content:    result.reply,
+      role: "assistant",
+      content: result.reply,
     });
     await db.sessions.incrementMessageCount(sid);
 
     // OCC blackboard save
     try {
       await db.sessions.update(sid, {
-        blackboard:       result.blackboard.toJSON(),
+        blackboard: result.blackboard.toJSON(),
         expected_version: session.version,
       });
     } catch (e) {
@@ -223,7 +239,10 @@ async function processMessage(
     bus.emit({ type: "message", session_id: sid, ts: new Date(), payload: assistantMsg });
 
     // Auto-summarise long sessions
-    if (session.message_count > 0 && session.message_count % sessionCfg.memory.summarisation.trigger_at_messages === 0) {
+    if (
+      session.message_count > 0 &&
+      session.message_count % sessionCfg.memory.summarisation.trigger_at_messages === 0
+    ) {
       maybeSummarise(sid, sessionCfg).catch((e) => log.warn("Summarise failed", e));
     }
   } catch (e) {
@@ -235,15 +254,15 @@ async function processMessage(
 async function maybeSummarise(sid: SessionId, sessionCfg: typeof cfg): Promise<void> {
   if (!sessionCfg.memory.summarisation.enabled) return;
   const summaryAlias = sessionCfg.memory.summarisation.model;
-  const summaryCfg   = sessionCfg.models[summaryAlias];
+  const summaryCfg = sessionCfg.models[summaryAlias];
   if (!summaryCfg) return;
 
-  const msgs   = await db.messages.list(sid, { limit: 50 });
-  const llm    = createLLMClient(summaryCfg);
-  const res    = await llm.chat({
+  const msgs = await db.messages.list(sid, { limit: 50 });
+  const llm = createLLMClient(summaryCfg);
+  const res = await llm.chat({
     messages: [
       { role: "system", content: "Summarise this conversation in 2-3 sentences." },
-      { role: "user",   content: msgs.map((m) => `${m.role}: ${m.content}`).join("\n") },
+      { role: "user", content: msgs.map((m) => `${m.role}: ${m.content}`).join("\n") },
     ],
   });
   const summary = res.choices[0]?.message.content ?? "";
@@ -255,8 +274,8 @@ async function maybeSummarise(sid: SessionId, sessionCfg: typeof cfg): Promise<v
 async function handleHTTP(req: Request): Promise<Response> {
   if (!authed(req)) return E401();
 
-  const url    = new URL(req.url);
-  const path   = url.pathname;
+  const url = new URL(req.url);
+  const path = url.pathname;
   const method = req.method;
 
   // GET /health
@@ -267,13 +286,17 @@ async function handleHTTP(req: Request): Promise<Response> {
   // GET /capabilities
   if (path === "/capabilities" && method === "GET") {
     const agents = Object.entries(cfg.agents).map(([name, a]) => ({
-      name, description: a.description, model: a.model,
+      name,
+      description: a.description,
+      model: a.model,
     }));
     return Response.json({
-      tools:  registry.list().map((t) => ({ name: t.function.name, description: t.function.description, source: "built-in" })),
+      tools: registry
+        .list()
+        .map((t) => ({ name: t.function.name, description: t.function.description, source: "built-in" })),
       agents,
       skills: skills.map((s) => ({ name: s.name, description: s.description })),
-      mode:   cfg.mode.default,
+      mode: cfg.mode.default,
     });
   }
 
@@ -285,11 +308,11 @@ async function handleHTTP(req: Request): Promise<Response> {
 
   // POST /sessions
   if (path === "/sessions" && method === "POST") {
-    const body    = await req.json() as { title?: string; goal?: string; mode?: string };
-    const id      = asSession(newId());
-    const title   = body.title ?? "New Session";
-    const goal    = body.goal  ?? title;
-    const mode    = (body.mode ?? cfg.mode.default) as import("@companion/db").SessionMode;
+    const body = (await req.json()) as { title?: string; goal?: string; mode?: string };
+    const id = asSession(newId());
+    const title = body.title ?? "New Session";
+    const goal = body.goal ?? title;
+    const mode = (body.mode ?? cfg.mode.default) as import("@companion/db").SessionMode;
     const session = await db.sessions.create(id, title, goal, mode);
     return Response.json({ session }, { status: 201 });
   }
@@ -297,7 +320,7 @@ async function handleHTTP(req: Request): Promise<Response> {
   // /sessions/:id routes
   const sessionMatch = path.match(/^\/sessions\/([^/]+)(\/.*)?$/);
   if (sessionMatch) {
-    const sid     = asSession(sessionMatch[1]!);
+    const sid = asSession(sessionMatch[1]!);
     const subpath = sessionMatch[2] ?? "";
     const session = await db.sessions.get(sid);
     if (!session && subpath !== "") return E404();
@@ -310,10 +333,10 @@ async function handleHTTP(req: Request): Promise<Response> {
     // PATCH /sessions/:id
     if (subpath === "" && method === "PATCH") {
       if (!session) return E404();
-      const body = await req.json() as Record<string, unknown>;
+      const body = (await req.json()) as Record<string, unknown>;
       await db.sessions.update(sid, {
-        title:  body["title"]  as string | undefined,
-        mode:   body["mode"]   as import("@companion/db").SessionMode | undefined,
+        title: body["title"] as string | undefined,
+        mode: body["mode"] as import("@companion/db").SessionMode | undefined,
         status: body["status"] as import("@companion/db").SessionStatus | undefined,
       });
       return Response.json({ ok: true });
@@ -328,22 +351,22 @@ async function handleHTTP(req: Request): Promise<Response> {
     // GET /sessions/:id/messages
     if (subpath === "/messages" && method === "GET") {
       const limit = Number(url.searchParams.get("limit") ?? "100");
-      const msgs  = await db.messages.list(sid, { limit });
+      const msgs = await db.messages.list(sid, { limit });
       return Response.json({ messages: msgs });
     }
 
     // POST /sessions/:id/messages
     if (subpath === "/messages" && method === "POST") {
       if (!session) return E404();
-      const body       = await req.json() as { content: string; stream?: boolean; working_dir?: string };
-      const content    = body.content?.trim();
+      const body = (await req.json()) as { content: string; stream?: boolean; working_dir?: string };
+      const content = body.content?.trim();
       if (!content) return E400("content is required");
       const workingDir = body.working_dir ?? process.cwd();
 
       const userMsg = await db.messages.add({
-        id:         asMessage(newId()),
+        id: asMessage(newId()),
         session_id: sid,
-        role:       "user",
+        role: "user",
         content,
       });
       await db.sessions.incrementMessageCount(sid);
@@ -351,16 +374,20 @@ async function handleHTTP(req: Request): Promise<Response> {
       if (body.stream) {
         // SSE streaming response
         const encoder = new TextEncoder();
-        let   controller: ReadableStreamDefaultController;
+        let controller: ReadableStreamDefaultController;
 
         const stream = new ReadableStream({
-          start(c) { controller = c; },
+          start(c) {
+            controller = c;
+          },
         });
 
         const send = (data: unknown) => {
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-          } catch { /* stream closed */ }
+          } catch {
+            /* stream closed */
+          }
         };
 
         // Stream agent events as SSE
@@ -369,26 +396,34 @@ async function handleHTTP(req: Request): Promise<Response> {
           if (e.type === "message") {
             const m = e.payload as { content: string };
             send({ type: "text", text: m.content });
-            try { controller.close(); } catch { /* already closed */ }
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
             unsub();
           }
           if (e.type === "agent_thought") send({ type: "thought", ...(e.payload as object) });
-          if (e.type === "tool_start")    send({ type: "tool_start", ...(e.payload as object) });
-          if (e.type === "tool_end")      send({ type: "tool_end", ...(e.payload as object) });
-          if (e.type === "error")         send({ type: "error", ...(e.payload as object) });
+          if (e.type === "tool_start") send({ type: "tool_start", ...(e.payload as object) });
+          if (e.type === "tool_end") send({ type: "tool_end", ...(e.payload as object) });
+          if (e.type === "error") send({ type: "error", ...(e.payload as object) });
         });
 
         processMessage(sid, session, content, workingDir).catch((e) => {
           send({ type: "error", error: String(e) });
-          try { controller.close(); } catch { /* already closed */ }
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
           unsub();
         });
 
         return new Response(stream, {
           headers: {
-            "Content-Type":  "text/event-stream",
+            "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
-            "Connection":    "keep-alive",
+            Connection: "keep-alive",
           },
         });
       }
@@ -411,18 +446,18 @@ async function handleHTTP(req: Request): Promise<Response> {
 // ── Bun.serve ─────────────────────────────────────────────────
 
 Bun.serve<{ session_id: string }>({
-  port:      cfg.server.port,
-  hostname:  cfg.server.host,
+  port: cfg.server.port,
+  hostname: cfg.server.host,
 
   fetch(req, server) {
     // WebSocket upgrade
     if (req.headers.get("Upgrade") === "websocket") {
-      const url   = new URL(req.url);
+      const url = new URL(req.url);
       const token = url.searchParams.get("token") ?? "";
-      const s     = cfg.server.secret;
+      const s = cfg.server.secret;
       if (s && token !== s) return E401();
       const sid = url.searchParams.get("session") ?? "";
-      const ok  = server.upgrade(req, { data: { session_id: sid } });
+      const ok = server.upgrade(req, { data: { session_id: sid } });
       return ok ? undefined : new Response("WS upgrade failed", { status: 500 });
     }
     return handleHTTP(req);
@@ -435,12 +470,14 @@ Bun.serve<{ session_id: string }>({
         ws.send(JSON.stringify({ type: "connected", session_id: ws.data.session_id }));
         // Push current task state — clears dead spinners on reconnect
         const task = activeTasks.get(ws.data.session_id) ?? null;
-        ws.send(JSON.stringify({
-          type:       "sync_state",
-          session_id: ws.data.session_id,
-          payload:    task,
-          ts:         new Date().toISOString(),
-        }));
+        ws.send(
+          JSON.stringify({
+            type: "sync_state",
+            session_id: ws.data.session_id,
+            payload: task,
+            ts: new Date().toISOString(),
+          }),
+        );
       }
     },
     message(ws: WS, raw: string | Buffer) {
@@ -452,14 +489,25 @@ Bun.serve<{ session_id: string }>({
           ws.send(JSON.stringify({ type: "subscribed", session_id: msg.session_id }));
           // Push sync_state for the new session too
           const task = activeTasks.get(msg.session_id) ?? null;
-          ws.send(JSON.stringify({ type: "sync_state", session_id: msg.session_id, payload: task, ts: new Date().toISOString() }));
+          ws.send(
+            JSON.stringify({
+              type: "sync_state",
+              session_id: msg.session_id,
+              payload: task,
+              ts: new Date().toISOString(),
+            }),
+          );
         }
       } catch (e) {
         log.debug(`WS message parse error: ${e}`);
       }
     },
-    close(ws: WS) { subs.get(ws.data.session_id)?.delete(ws); },
-    error(ws: WS, err: Error) { log.error("WS error", err); },
+    close(ws: WS) {
+      subs.get(ws.data.session_id)?.delete(ws);
+    },
+    error(ws: WS, err: Error) {
+      log.error("WS error", err);
+    },
   },
 });
 
@@ -473,9 +521,9 @@ for (const [alias, m] of ollamaModels) {
   try {
     const res = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      const data = await res.json() as { models?: Array<{ name: string }> };
+      const data = (await res.json()) as { models?: Array<{ name: string }> };
       const available = data.models?.map((x) => x.name) ?? [];
-      const present   = available.some((n) => n.startsWith(m.model.split(":")[0]!));
+      const present = available.some((n) => n.startsWith(m.model.split(":")[0]!));
       if (present) {
         log.info(`Ollama model "${m.model}" (alias: ${alias}) — ready`);
       } else {

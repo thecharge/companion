@@ -6,14 +6,14 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test":      "bun test",
-    "build":     "echo 'library — no build step'"
+    "test": "bun test",
+    "build": "echo 'library — no build step'"
   },
   "dependencies": {
     "@companion/config": "workspace:*"
   },
   "devDependencies": {
-    "bun-types":  "1.1.42",
+    "bun-types": "1.1.42",
     "typescript": "5.7.2"
   }
 }

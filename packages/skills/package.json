@@ -6,17 +6,17 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test":      "bun test",
-    "build":     "echo 'library — no build step'"
+    "test": "bun test",
+    "build": "echo 'library — no build step'"
   },
   "dependencies": {
     "@companion/config": "workspace:*",
-    "@companion/core":   "workspace:*",
-    "@companion/tools":  "workspace:*",
-    "yaml":              "^2.6.1"
+    "@companion/core": "workspace:*",
+    "@companion/tools": "workspace:*",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
-    "bun-types":  "1.1.42",
+    "bun-types": "1.1.42",
     "typescript": "5.7.2"
   }
 }

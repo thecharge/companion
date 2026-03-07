@@ -11,27 +11,27 @@ import { z } from "zod";
 // ── Schema ────────────────────────────────────────────────────
 
 const ModelSchema = z.object({
-  provider:    z.enum(["ollama", "anthropic", "openai", "gemini", "copilot"]),
-  model:       z.string(),
-  base_url:    z.string().optional(),
-  api_key:     z.string().optional(),
-  max_tokens:  z.number().int().positive().default(4096),
+  provider: z.enum(["ollama", "anthropic", "openai", "gemini", "copilot"]),
+  model: z.string(),
+  base_url: z.string().optional(),
+  api_key: z.string().optional(),
+  max_tokens: z.number().int().positive().default(4096),
   temperature: z.number().min(0).max(2).default(0.2),
 });
 
 const AgentSchema = z.object({
-  model:       z.string(),
+  model: z.string(),
   description: z.string(),
-  tools:       z.array(z.string()).default([]),
-  reads_from:  z.array(z.string()).default([]),
-  writes_to:   z.array(z.string()).default([]),
-  max_turns:   z.number().int().positive().default(8),
+  tools: z.array(z.string()).default([]),
+  reads_from: z.array(z.string()).default([]),
+  writes_to: z.array(z.string()).default([]),
+  max_turns: z.number().int().positive().default(8),
 });
 
 const ConfigSchema = z.object({
   server: z.object({
-    port:   z.coerce.number().int().default(3000),
-    host:   z.string().default("0.0.0.0"),
+    port: z.coerce.number().int().default(3000),
+    host: z.string().default("0.0.0.0"),
     secret: z.string().default("dev-secret"),
   }),
 
@@ -43,11 +43,9 @@ const ConfigSchema = z.object({
 
   vector: z.object({
     backend: z.enum(["sqlite-vec", "qdrant"]).default("sqlite-vec"),
-    qdrant: z
-      .object({ url: z.string(), collection: z.string() })
-      .optional(),
+    qdrant: z.object({ url: z.string(), collection: z.string() }).optional(),
     embedding: z.object({
-      model:      z.string().default("nomic-embed-text"),
+      model: z.string().default("nomic-embed-text"),
       dimensions: z.number().int().positive().default(768),
     }),
   }),
@@ -55,8 +53,8 @@ const ConfigSchema = z.object({
   models: z.record(z.string(), ModelSchema),
 
   orchestrator: z.object({
-    model:          z.string().default("local"),
-    max_rounds:     z.number().int().positive().default(10),
+    model: z.string().default("local"),
+    max_rounds: z.number().int().positive().default(10),
     verify_results: z.boolean().default(true),
   }),
 
@@ -65,21 +63,21 @@ const ConfigSchema = z.object({
   memory: z.object({
     context_window: z.object({
       max_messages: z.number().int().positive().default(40),
-      max_tokens:   z.number().int().positive().default(8000),
+      max_tokens: z.number().int().positive().default(8000),
     }),
     sliding_window: z.object({
       chunk_size: z.number().int().positive().default(2000),
-      page_size:  z.number().int().positive().default(20),
+      page_size: z.number().int().positive().default(20),
     }),
     recall: z.object({
-      top_k:         z.number().int().positive().default(5),
-      min_score:     z.number().min(0).max(1).default(0.72),
+      top_k: z.number().int().positive().default(5),
+      min_score: z.number().min(0).max(1).default(0.72),
       cross_session: z.boolean().default(false),
     }),
     summarisation: z.object({
-      enabled:             z.boolean().default(true),
+      enabled: z.boolean().default(true),
       trigger_at_messages: z.number().int().positive().default(60),
-      model:               z.string().default("fast"),
+      model: z.string().default("fast"),
     }),
   }),
 
@@ -88,23 +86,25 @@ const ConfigSchema = z.object({
     presets: z.record(z.string(), z.object({ description: z.string() })),
   }),
 
-  tools: z.record(
-    z.string(),
-    z.object({
-      image:           z.string().optional(),
-      timeout_seconds: z.number().int().positive().default(30),
-      allow_network:   z.boolean().default(false),
-    }),
-  ).default({}),
+  tools: z
+    .record(
+      z.string(),
+      z.object({
+        image: z.string().optional(),
+        timeout_seconds: z.number().int().positive().default(30),
+        allow_network: z.boolean().default(false),
+      }),
+    )
+    .default({}),
 });
 
-export type Config      = z.infer<typeof ConfigSchema>;
+export type Config = z.infer<typeof ConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelSchema>;
 export type AgentConfig = z.infer<typeof AgentSchema>;
 export type ConfigPatch = Partial<{
   orchestrator: Partial<Config["orchestrator"]>;
-  memory:       Partial<Config["memory"]>;
-  mode:         Partial<Config["mode"]>;
+  memory: Partial<Config["memory"]>;
+  mode: Partial<Config["mode"]>;
 }>;
 
 // ── Env interpolation ─────────────────────────────────────────
@@ -121,9 +121,7 @@ function walkInterpolate(obj: unknown): unknown {
   if (typeof obj === "string") return interpolate(obj);
   if (Array.isArray(obj)) return obj.map(walkInterpolate);
   if (obj !== null && typeof obj === "object") {
-    return Object.fromEntries(
-      Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, walkInterpolate(v)]),
-    );
+    return Object.fromEntries(Object.entries(obj as Record<string, unknown>).map(([k, v]) => [k, walkInterpolate(v)]));
   }
   return obj;
 }
@@ -135,8 +133,8 @@ export async function loadConfig(path = "./companion.yaml"): Promise<Config> {
   if (!(await file.exists())) {
     throw new Error(`companion.yaml not found at ${path}`);
   }
-  const raw  = await file.text();
-  const obj  = walkInterpolate(parseYaml(raw));
+  const raw = await file.text();
+  const obj = walkInterpolate(parseYaml(raw));
   const result = ConfigSchema.safeParse(obj);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
@@ -148,8 +146,8 @@ export async function loadConfig(path = "./companion.yaml"): Promise<Config> {
 // ── Runtime config store (per-session overrides + global patches) ─
 
 export class ConfigStore {
-  private base:     Config;
-  private global:   ConfigPatch = {};
+  private base: Config;
+  private global: ConfigPatch = {};
   private sessions: Map<string, ConfigPatch> = new Map();
 
   constructor(base: Config) {
@@ -158,7 +156,7 @@ export class ConfigStore {
 
   /** Get effective config for a session */
   get(sessionId?: string): Config {
-    const s   = sessionId ? (this.sessions.get(sessionId) ?? {}) : {};
+    const s = sessionId ? (this.sessions.get(sessionId) ?? {}) : {};
     return deepMerge(deepMerge(this.base, this.global), s) as Config;
   }
 
@@ -179,13 +177,7 @@ export class ConfigStore {
 }
 
 function deepMerge(base: unknown, patch: unknown): unknown {
-  if (
-    patch === null ||
-    patch === undefined ||
-    typeof patch !== "object" ||
-    Array.isArray(patch)
-  )
-    return patch ?? base;
+  if (patch === null || patch === undefined || typeof patch !== "object" || Array.isArray(patch)) return patch ?? base;
   if (typeof base !== "object" || base === null || Array.isArray(base)) return patch;
   const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {

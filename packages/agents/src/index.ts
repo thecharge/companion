@@ -14,12 +14,7 @@
  */
 
 import type { Config } from "@companion/config";
-import {
-  Blackboard,
-  Logger,
-  bus,
-  type SessionId,
-} from "@companion/core";
+import { Blackboard, Logger, bus, type SessionId } from "@companion/core";
 import type { DB } from "@companion/db";
 import { createLLMClient, isToolCall, modelSupportsTools, type ChatMessage, type OAITool } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
@@ -30,16 +25,16 @@ const log = new Logger("agents");
 // ── Types ─────────────────────────────────────────────────────
 
 export interface AgentRunParams {
-  session_id:   SessionId;
-  blackboard:   Blackboard;
+  session_id: SessionId;
+  blackboard: Blackboard;
   user_message: string;
-  history:      ChatMessage[];
-  working_dir:  string;
+  history: ChatMessage[];
+  working_dir: string;
 }
 
 export interface AgentRunResult {
-  reply:          string;
-  blackboard:     Blackboard;
+  reply: string;
+  blackboard: Blackboard;
   stopped_reason: "done" | "max_turns" | "error";
 }
 
@@ -72,48 +67,54 @@ function formatBlackboard(bb: Blackboard): string {
 class AgentRunner {
   constructor(
     private agentName: string,
-    private cfg:       Config,
-    private registry:  ToolRegistry,
-    private memory:    MemoryService,
-    private db:        DB,
+    private cfg: Config,
+    private registry: ToolRegistry,
+    private memory: MemoryService,
+    private db: DB,
   ) {}
 
   async run(params: AgentRunParams): Promise<{ reply: string; stopped_reason: "done" | "max_turns" | "error" }> {
-    const agentCfg    = this.cfg.agents[this.agentName];
+    const agentCfg = this.cfg.agents[this.agentName];
     if (!agentCfg) throw new Error(`Unknown agent: ${this.agentName}`);
 
-    const modelAlias  = agentCfg.model;
-    const modelCfg    = this.cfg.models[modelAlias];
+    const modelAlias = agentCfg.model;
+    const modelCfg = this.cfg.models[modelAlias];
     if (!modelCfg) throw new Error(`Unknown model alias: ${modelAlias}`);
 
-    const llm         = createLLMClient(modelCfg);
-    const maxTurns    = agentCfg.max_turns;
-    const tools       = agentCfg.tools
+    const llm = createLLMClient(modelCfg);
+    const maxTurns = agentCfg.max_turns;
+    const tools = agentCfg.tools
       .map((name) => this.registry.get(name)?.schema)
       .filter((t): t is OAITool => t !== undefined);
 
-    const bbView      = formatBlackboard(params.blackboard);
+    const bbView = formatBlackboard(params.blackboard);
     const systemPrompt = [
       `You are the ${this.agentName} agent. ${agentCfg.description}`,
       `Blackboard:\n${bbView}`,
       tools.length ? "Use the provided tools to complete the task." : "",
-    ].filter(Boolean).join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     const ctx: ToolContext = {
-      session_id:  params.session_id,
+      session_id: params.session_id,
       working_dir: params.working_dir,
-      db:          this.db,
-      cfg:         this.cfg,
+      db: this.db,
+      cfg: this.cfg,
     };
 
     const messages: ChatMessage[] = [
-      { role: "system",  content: systemPrompt },
+      { role: "system", content: systemPrompt },
       ...params.history.slice(-20),
       { role: "user", content: params.user_message },
     ];
 
-    bus.emit({ type: "agent_start", session_id: params.session_id, ts: new Date(),
-      payload: { agent: this.agentName, model: modelAlias } });
+    bus.emit({
+      type: "agent_start",
+      session_id: params.session_id,
+      ts: new Date(),
+      payload: { agent: this.agentName, model: modelAlias },
+    });
 
     let lastFailedSignature: string | null = null;
 
@@ -121,8 +122,9 @@ class AgentRunner {
       // Penultimate turn — force final synthesis
       if (turn === maxTurns - 1) {
         messages.push({
-          role:    "system",
-          content: "WARNING: This is your last turn. Synthesise everything and give a final answer now. Do not call any more tools.",
+          role: "system",
+          content:
+            "WARNING: This is your last turn. Synthesise everything and give a final answer now. Do not call any more tools.",
         });
       }
 
@@ -132,7 +134,7 @@ class AgentRunner {
       try {
         if (useStructured) {
           const res = await llm.chat({ messages, tools, tool_choice: "auto" });
-          response  = res.choices[0]!.message;
+          response = res.choices[0]!.message;
         } else {
           // Small Ollama model — JSON mode ReAct
           const reactPrompt = buildReActPrompt(tools);
@@ -145,8 +147,12 @@ class AgentRunner {
         }
       } catch (e) {
         log.error(`Agent ${this.agentName} LLM call failed`, e);
-        bus.emit({ type: "agent_end", session_id: params.session_id, ts: new Date(),
-          payload: { agent: this.agentName, stopped_reason: "error" } });
+        bus.emit({
+          type: "agent_end",
+          session_id: params.session_id,
+          ts: new Date(),
+          payload: { agent: this.agentName, stopped_reason: "error" },
+        });
         return { reply: `Agent error: ${String(e)}`, stopped_reason: "error" };
       }
 
@@ -154,14 +160,22 @@ class AgentRunner {
 
       // Emit thought if text content present alongside tool calls
       if (response.content) {
-        bus.emit({ type: "agent_thought", session_id: params.session_id, ts: new Date(),
-          payload: { agent: this.agentName, text: response.content } });
+        bus.emit({
+          type: "agent_thought",
+          session_id: params.session_id,
+          ts: new Date(),
+          payload: { agent: this.agentName, text: response.content },
+        });
       }
 
       // Done — no more tool calls
       if (!isToolCall(response)) {
-        bus.emit({ type: "agent_end", session_id: params.session_id, ts: new Date(),
-          payload: { agent: this.agentName, stopped_reason: "done" } });
+        bus.emit({
+          type: "agent_end",
+          session_id: params.session_id,
+          ts: new Date(),
+          payload: { agent: this.agentName, stopped_reason: "done" },
+        });
         return { reply: response.content ?? "", stopped_reason: "done" };
       }
 
@@ -188,13 +202,21 @@ class AgentRunner {
           continue;
         }
 
-        bus.emit({ type: "tool_start", session_id: params.session_id, ts: new Date(),
-          payload: { tool: tc.function.name, agent: this.agentName } });
+        bus.emit({
+          type: "tool_start",
+          session_id: params.session_id,
+          ts: new Date(),
+          payload: { tool: tc.function.name, agent: this.agentName },
+        });
 
         const result = await this.registry.run({ id: tc.id, tool_name: tc.function.name, args }, ctx);
 
-        bus.emit({ type: "tool_end", session_id: params.session_id, ts: new Date(),
-          payload: { tool: tc.function.name, duration_ms: result.duration_ms, error: result.error } });
+        bus.emit({
+          type: "tool_end",
+          session_id: params.session_id,
+          ts: new Date(),
+          payload: { tool: tc.function.name, duration_ms: result.duration_ms, error: result.error },
+        });
 
         if (result.error) {
           lastFailedSignature = callSig;
@@ -203,10 +225,10 @@ class AgentRunner {
         }
 
         toolResults.push({
-          role:         "tool",
-          content:      result.result ?? result.error ?? "no output",
+          role: "tool",
+          content: result.result ?? result.error ?? "no output",
           tool_call_id: tc.id,
-          name:         tc.function.name,
+          name: tc.function.name,
         });
       }
 
@@ -215,35 +237,46 @@ class AgentRunner {
 
     // Exhausted turns
     const lastContent = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
-    bus.emit({ type: "agent_end", session_id: params.session_id, ts: new Date(),
-      payload: { agent: this.agentName, stopped_reason: "max_turns" } });
+    bus.emit({
+      type: "agent_end",
+      session_id: params.session_id,
+      ts: new Date(),
+      payload: { agent: this.agentName, stopped_reason: "max_turns" },
+    });
     return { reply: lastContent, stopped_reason: "max_turns" };
   }
 
   private async parseReActResponse(
-    response:  ChatMessage,
-    messages:  ChatMessage[],
-    llm:       ReturnType<typeof createLLMClient>,
-    tools:     OAITool[],
+    response: ChatMessage,
+    messages: ChatMessage[],
+    llm: ReturnType<typeof createLLMClient>,
+    tools: OAITool[],
   ): Promise<ChatMessage> {
     const raw = response.content ?? "";
     try {
-      const parsed = JSON.parse(raw) as { thought?: string; action?: string; tool?: string; args?: Record<string, unknown> };
+      const parsed = JSON.parse(raw) as {
+        thought?: string;
+        action?: string;
+        tool?: string;
+        args?: Record<string, unknown>;
+      };
       if (parsed.action === "final_answer" || !parsed.tool) {
         return { role: "assistant", content: parsed.thought ?? raw };
       }
       // Reconstruct as tool_calls
       return {
-        role:    "assistant",
+        role: "assistant",
         content: parsed.thought ?? null,
-        tool_calls: [{
-          id:   `react_${Date.now()}`,
-          type: "function" as const,
-          function: {
-            name:      parsed.tool ?? "unknown",
-            arguments: JSON.stringify(parsed.args ?? {}),
+        tool_calls: [
+          {
+            id: `react_${Date.now()}`,
+            type: "function" as const,
+            function: {
+              name: parsed.tool ?? "unknown",
+              arguments: JSON.stringify(parsed.args ?? {}),
+            },
           },
-        }],
+        ],
       };
     } catch {
       // Recovery: ask model to fix its output
@@ -252,7 +285,7 @@ class AgentRunner {
           ...messages,
           { role: "assistant", content: raw },
           {
-            role:    "user",
+            role: "user",
             content: `Your output was not valid JSON. Output ONLY valid JSON starting with { and ending with }. No apologies, no explanation.\nBroken: ${raw.slice(0, 200)}`,
           },
         ],
@@ -276,40 +309,40 @@ When done:      {"thought":"reasoning","action":"final_answer","result":"your an
 // ── Orchestrator ──────────────────────────────────────────────
 
 export interface OrchestratorParams {
-  session_id:   SessionId;
-  blackboard:   Blackboard;
+  session_id: SessionId;
+  blackboard: Blackboard;
   user_message: string;
-  history:      ChatMessage[];
-  working_dir:  string;
-  mode:         string;
+  history: ChatMessage[];
+  working_dir: string;
+  mode: string;
 }
 
 export class SessionProcessor {
   constructor(
-    private cfg:      Config,
+    private cfg: Config,
     private registry: ToolRegistry,
-    private memory:   MemoryService,
-    private db:       DB,
+    private memory: MemoryService,
+    private db: DB,
   ) {}
 
   async handleMessage(params: OrchestratorParams): Promise<AgentRunResult> {
     const { session_id, blackboard, user_message, history, working_dir, mode } = params;
 
     const orchAlias = this.cfg.orchestrator.model;
-    const orchCfg   = this.cfg.models[orchAlias];
+    const orchCfg = this.cfg.models[orchAlias];
     if (!orchCfg) throw new Error(`Orchestrator model alias not found: ${orchAlias}`);
 
-    const orchLLM   = createLLMClient(orchCfg);
+    const orchLLM = createLLMClient(orchCfg);
     const maxRounds = this.cfg.orchestrator.max_rounds;
 
     blackboard.appendDecision(0, "start", "orchestrator", `User: ${user_message.slice(0, 100)}`);
 
     for (let round = 1; round <= maxRounds; round++) {
-      const prompt  = buildOrchestratorPrompt(blackboard, mode);
+      const prompt = buildOrchestratorPrompt(blackboard, mode);
       const orchRes = await orchLLM.chat({
         messages: [
           { role: "system", content: prompt },
-          { role: "user",   content: user_message },
+          { role: "user", content: user_message },
         ],
         json_mode: orchCfg.provider === "ollama",
       });
@@ -324,8 +357,12 @@ export class SessionProcessor {
         decision = { action: "reply", target: "responder", reason: "orchestrator parse error" };
       }
 
-      bus.emit({ type: "orchestrator_decision", session_id, ts: new Date(),
-        payload: { round, action: decision.action, target: decision.target } });
+      bus.emit({
+        type: "orchestrator_decision",
+        session_id,
+        ts: new Date(),
+        payload: { round, action: decision.action, target: decision.target },
+      });
 
       blackboard.appendDecision(round, decision.action, decision.target ?? "", decision.reason ?? "");
 
@@ -336,7 +373,7 @@ export class SessionProcessor {
 
       if (decision.action === "reply" || decision.action === "run_agent") {
         const targetName = decision.target ?? "responder";
-        const agentDef   = this.cfg.agents[targetName];
+        const agentDef = this.cfg.agents[targetName];
 
         if (!agentDef) {
           blackboard.appendRejection(round, targetName, `Agent "${targetName}" not found`);
@@ -348,7 +385,8 @@ export class SessionProcessor {
 
         // Asymmetric verify: skip if agent model outranks orchestrator
         const agentModelAlias = agentDef.model;
-        const shouldVerify    = this.cfg.orchestrator.verify_results &&
+        const shouldVerify =
+          this.cfg.orchestrator.verify_results &&
           !(orchCfg.provider === "ollama" && this.cfg.models[agentModelAlias]?.provider !== "ollama");
 
         if (shouldVerify && result.reply) {
@@ -377,18 +415,18 @@ export class SessionProcessor {
   }
 
   private async verify(
-    llm:         ReturnType<typeof createLLMClient>,
+    llm: ReturnType<typeof createLLMClient>,
     userMessage: string,
-    agentReply:  string,
+    agentReply: string,
   ): Promise<{ ok: boolean; reason: string }> {
     const res = await llm.chat({
       messages: [
         {
-          role:    "system",
+          role: "system",
           content: `You verify agent outputs. Reply ONLY with valid JSON: {"ok":true,"reason":"..."} or {"ok":false,"reason":"..."}`,
         },
         {
-          role:    "user",
+          role: "user",
           content: `Task: ${userMessage}\nAgent reply: ${agentReply.slice(0, 600)}\nIs the reply correct and complete?`,
         },
       ],
