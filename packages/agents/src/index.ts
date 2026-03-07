@@ -10,7 +10,7 @@
  * 2. AbortSignal threaded everywhere. Cancel mid-flight via WS {"type":"cancel"}.
  *
  * 3. Self-verify disabled. When orchestrator and agent use the same model,
- *    qwen3:1.7b verifying its own output is noise that randomly rejects valid answers.
+ *    qwen2.5:3b verifying its own output is noise that randomly rejects valid answers.
  *
  * 4. ReAct recursion capped at depth=1. One recovery attempt, then use raw text.
  *

@@ -76,7 +76,7 @@ export function modelSupportsTools(model: string): boolean {
   const lower = model.toLowerCase();
   // qwen3 (all sizes) — native tool calling via Ollama /api/chat tools param.
   // Block only models confirmed to NOT support structured tool calls.
-  const noTools = ["qwen3:1.7b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
+  const noTools = ["qwen2.5:3b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
   return !noTools.some((m) => lower.includes(m));
 }
 
@@ -445,15 +445,19 @@ export class LLMClient {
 
   private async ollamaEmbed(text: string): Promise<number[]> {
     const base = (this.cfg.base_url ?? "http://localhost:11434").replace(/\/$/, "");
-    const res = await fetch(`${base}/api/embeddings`, {
+    // /api/embed is the current endpoint (/api/embeddings is deprecated since Ollama 0.2)
+    const res = await fetch(`${base}/api/embed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: this.cfg.model, prompt: text }),
+      body: JSON.stringify({ model: this.cfg.model, input: text }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error(`Ollama embed ${res.status}`);
-    const data = (await res.json()) as { embedding: number[] };
-    return data.embedding;
+    if (!res.ok) throw new Error(`Ollama embed ${res.status}: ${await res.text().catch(() => "")}`);
+    const data = (await res.json()) as { embeddings?: number[][]; embedding?: number[] };
+    // /api/embed returns { embeddings: [[...]] }; old endpoint returned { embedding: [...] }
+    const vec = data.embeddings?.[0] ?? data.embedding;
+    if (!vec?.length) throw new Error("Ollama embed: empty vector returned");
+    return vec;
   }
 
   // ── Gemini ────────────────────────────────────────────────

@@ -693,7 +693,7 @@ function App() {
       {/* Title bar */}
       <Box justifyContent="space-between" paddingX={1}>
         <Text bold color="cyan">
-          ⚡ Companion (By Radoslav Sandov)
+          ⚡ Companion
         </Text>
         <Text color="gray">Tab=switch /=input ↑↓=scroll q=quit</Text>
         {statusMsg && <Text color="red"> {statusMsg}</Text>}

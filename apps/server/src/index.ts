@@ -72,6 +72,7 @@ registry.register({
     try {
       const query = String(args["query"] ?? "");
       const limit = Number(args["limit"] ?? 5);
+      if (!embedAvailable) return "Memory recall not available (embed model not pulled)";
       const queryEmbed = await embedClient.embed(query);
       const results = await memory.recall(ctx.session_id, queryEmbed);
       const top = results.slice(0, limit);
@@ -82,10 +83,44 @@ registry.register({
   },
 });
 
-// Embedding model for memory recall
-const embedCfg = cfg.models[cfg.orchestrator.model]!;
-const embedClient = createLLMClient(embedCfg);
+// Embedding model for memory recall.
+// Uses nomic-embed-text (cfg.vector.embedding.model) via Ollama /api/embed.
+// If the model is not pulled, recall is DISABLED for the session — no 500 spam.
+// Pull:  ollama pull nomic-embed-text
+const embedModelName = cfg.vector.embedding.model;
+const embedBase = (() => {
+  const anyOllama = Object.values(cfg.models).find((m) => m.provider === "ollama");
+  return (anyOllama?.base_url ?? "http://localhost:11434").replace(/\/$/, "");
+})();
+const embedClient = createLLMClient({
+  provider: "ollama",
+  model: embedModelName,
+  base_url: embedBase,
+  max_tokens: 1,
+  temperature: 0,
+});
 const memory = new MemoryService(vectors, cfg);
+
+// Check embed model availability once at startup — disable recall if missing.
+// Avoids a 500 error on every single message when the model is not pulled.
+let embedAvailable = false;
+try {
+  const tagsRes = await fetch(`${embedBase}/api/tags`, { signal: AbortSignal.timeout(3000) });
+  if (tagsRes.ok) {
+    const tags = (await tagsRes.json()) as { models?: Array<{ name: string }> };
+    const names = tags.models?.map((m) => m.name) ?? [];
+    embedAvailable = names.some((n) => n.startsWith(embedModelName.split(":")[0]!));
+  }
+} catch {
+  /* Ollama not reachable — already warned above */
+}
+
+if (embedAvailable) {
+  log.info(`Embed model "${embedModelName}" ready — memory recall enabled`);
+} else {
+  log.warn(`Embed model "${embedModelName}" not found — memory recall disabled.`);
+  log.warn(`Run: ollama pull ${embedModelName}   (small model, ~274MB)`);
+}
 
 // ── Active task tracking (for WS sync_state on reconnect) ────
 
@@ -190,15 +225,17 @@ async function processMessage(
 
   // Recall — enrich query with goal + latest observation for short messages
   let recallTexts: string[] = [];
-  try {
-    const recallQuery = [content, bb.goal, bb.read("observations").slice(-1)[0] ?? ""]
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 500);
-    const queryEmbed = await embedClient.embed(recallQuery);
-    recallTexts = await memory.recall(sid, queryEmbed);
-  } catch (e) {
-    log.warn("Recall failed (continuing without)", e);
+  if (embedAvailable) {
+    try {
+      const recallQuery = [content, bb.goal, bb.read("observations").slice(-1)[0] ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 500);
+      const queryEmbed = await embedClient.embed(recallQuery);
+      recallTexts = await memory.recall(sid, queryEmbed);
+    } catch (e) {
+      log.warn("Recall failed", e);
+    }
   }
 
   void recallTexts; // used by agent system prompt via memory.buildContext
@@ -544,6 +581,24 @@ Bun.serve<{ session_id: string }>({
 
 // Startup tasks
 sandbox.cleanupZombies().catch((e) => log.warn("Zombie cleanup error", e));
+
+// Check embed model availability
+try {
+  const embedCheckRes = await fetch(`${embedBase}/api/tags`, { signal: AbortSignal.timeout(3000) });
+  if (embedCheckRes.ok) {
+    const tags = (await embedCheckRes.json()) as { models?: Array<{ name: string }> };
+    const available = tags.models?.map((x) => x.name) ?? [];
+    const embedPresent = available.some((n) => n.startsWith(embedModelName.split(":")[0]!));
+    if (embedPresent) {
+      log.info(`Embed model "${embedModelName}" — ready`);
+    } else {
+      log.warn(`Embed model "${embedModelName}" not found in Ollama. Run: ollama pull ${embedModelName}`);
+      log.warn("Semantic recall will be disabled until the embed model is pulled.");
+    }
+  }
+} catch {
+  log.warn(`Cannot check embed model "${embedModelName}" — Ollama not reachable`);
+}
 
 // Check Ollama availability for any locally-configured models
 const ollamaModels = Object.entries(cfg.models).filter(([, m]) => m.provider === "ollama");
