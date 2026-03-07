@@ -1,0 +1,107 @@
+server:
+  port:   ${COMPANION_PORT:-3000}
+  host:   "0.0.0.0"
+  secret: ${COMPANION_SECRET:-dev-secret}
+
+db:
+  driver: sqlite                  # sqlite | postgres
+  sqlite:
+    path: ./data/companion.db
+  postgres:
+    url: ${DATABASE_URL:-}
+
+vector:
+  backend:   sqlite-vec            # sqlite-vec | qdrant
+  qdrant:
+    url:        http://localhost:6333
+    collection: companion
+  embedding:
+    model:      nomic-embed-text
+    dimensions: 768
+
+models:
+  local:
+    provider:    ollama
+    model:       qwen2.5:3b
+    base_url:    ${OLLAMA_BASE_URL:-http://localhost:11434}
+    max_tokens:  4096
+    temperature: 0.2
+  smart:
+    provider:    anthropic
+    model:       claude-sonnet-4-5-20251101
+    api_key:     ${ANTHROPIC_API_KEY:-}
+    max_tokens:  8192
+    temperature: 0.3
+  fast:
+    provider:    anthropic
+    model:       claude-haiku-4-5-20251001
+    api_key:     ${ANTHROPIC_API_KEY:-}
+    max_tokens:  4096
+    temperature: 0.1
+
+orchestrator:
+  model:          local           # any alias — swap to "smart" for complex tasks
+  max_rounds:     10
+  verify_results: true
+
+agents:
+  analyst:
+    model:       smart
+    description: "Reads and analyses documents, code, and data. Produces structured observations."
+    tools:       [read_file, search_history, search_memory, web_fetch]
+    reads_from:  [goal, observations]
+    writes_to:   [observations]
+    max_turns:   6
+
+  engineer:
+    model:       smart
+    description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
+    tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history]
+    reads_from:  [goal, observations, artifacts]
+    writes_to:   [artifacts, observations]
+    max_turns:   12
+
+  responder:
+    model:       fast
+    description: "Synthesises agent outputs into a clear, concise reply to the user."
+    tools:       []
+    reads_from:  [goal, observations, artifacts, decisions]
+    writes_to:   []
+    max_turns:   2
+
+memory:
+  context_window:
+    max_messages: 40
+    max_tokens:   8000
+  sliding_window:
+    chunk_size:  2000
+    page_size:   20
+  recall:
+    top_k:         5
+    min_score:     0.72
+    cross_session: false
+  summarisation:
+    enabled:          true
+    trigger_at_messages: 60
+    model:            fast
+
+mode:
+  default: local
+  presets:
+    local:
+      description: "Local model only — fast, free, private"
+    balanced:
+      description: "Local orchestrator + cloud agents for heavy tasks"
+    cloud:
+      description: "Cloud orchestrator and agents — maximum capability"
+
+tools:
+  run_shell:
+    image:          companion-sandbox:latest
+    timeout_seconds: 30
+    allow_network:  false
+  run_tests:
+    image:          companion-sandbox:latest
+    timeout_seconds: 120
+  web_fetch:
+    timeout_seconds: 15

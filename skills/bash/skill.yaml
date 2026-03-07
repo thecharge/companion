@@ -1,0 +1,16 @@
+name: bash
+version: "1.0.0"
+description: "Execute bash commands. Arguments passed as COMPANION_ARG_* env vars."
+tags: [shell, automation]
+
+tools:
+  - name: bash_exec
+    description: "Execute a bash command. Returns stdout, stderr, exit code."
+    parameters:
+      command:
+        type: string
+        description: "Bash command to execute"
+        required: true
+    timeout: 60
+    script: |
+      eval "$COMPANION_ARG_COMMAND"

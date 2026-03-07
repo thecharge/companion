@@ -1,0 +1,25 @@
+{
+  "name": "companion",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev":       "turbo run dev --concurrency=10",
+    "build":     "turbo run build",
+    "test":      "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint":      "biome check .",
+    "format":    "biome format --write .",
+    "server":    "bun run apps/server/src/index.ts",
+    "tui":       "bun run apps/tui/src/index.tsx"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "bun-types":      "1.1.42",
+    "turbo":          "2.3.3",
+    "typescript":     "5.7.2"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@companion/memory",
+  "version": "0.0.1",
+  "private": true,
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test":      "bun test",
+    "build":     "echo 'library — no build step'"
+  },
+  "dependencies": {
+    "@companion/config": "workspace:*",
+    "@companion/core":   "workspace:*",
+    "@companion/db":     "workspace:*",
+    "@companion/llm":    "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types":  "1.1.42",
+    "typescript": "5.7.2"
+  }
+}

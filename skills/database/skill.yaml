@@ -1,0 +1,48 @@
+name: database
+version: "1.0.0"
+description: "Query SQLite databases. Arguments via COMPANION_ARG_*."
+tags: [database, sql, sqlite]
+
+tools:
+  - name: sqlite_query
+    description: "Execute a SQL query on a SQLite file. Returns results as tab-separated text."
+    parameters:
+      database:
+        type: string
+        description: "Path to .db file relative to working directory"
+        required: true
+      query:
+        type: string
+        description: "SQL query to execute"
+        required: true
+      limit:
+        type: number
+        description: "Max rows (default 50)"
+        required: false
+    timeout: 30
+    script: |
+      python3 - << 'PYEOF'
+      import os, sys, sqlite3
+      db_path = os.path.join(os.environ.get('WORKING_DIR', '.'), os.environ.get('COMPANION_ARG_DATABASE', ''))
+      query   = os.environ.get('COMPANION_ARG_QUERY', '')
+      limit   = int(os.environ.get('COMPANION_ARG_LIMIT', '50') or '50')
+      try:
+          conn = sqlite3.connect(db_path)
+          conn.row_factory = sqlite3.Row
+          cur  = conn.execute(query)
+          if cur.description:
+              cols = [d[0] for d in cur.description]
+              rows = cur.fetchmany(limit)
+              print('\t'.join(cols))
+              print('-' * 60)
+              for r in rows:
+                  print('\t'.join(str(v) for v in r))
+              print(f'\n{len(rows)} row(s)')
+          else:
+              conn.commit()
+              print(f'OK — {cur.rowcount} row(s) affected')
+          conn.close()
+      except Exception as e:
+          print(f'ERROR: {e}')
+          sys.exit(1)
+      PYEOF

@@ -1,0 +1,20 @@
+{
+  "name": "@companion/config",
+  "version": "0.0.1",
+  "private": true,
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test":      "bun test",
+    "build":     "echo 'library — no build step'"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1",
+    "zod":  "^3.23.8"
+  },
+  "devDependencies": {
+    "bun-types":  "1.1.42",
+    "typescript": "5.7.2"
+  }
+}

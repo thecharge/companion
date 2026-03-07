@@ -1,0 +1,41 @@
+name: file-edit
+version: "1.0.0"
+description: "Precise file editing using SEARCH/REPLACE. Safer than full rewrites."
+tags: [files, editing, code]
+
+tools:
+  - name: search_replace
+    description: "Replace an exact block of text in a file. Fails if text not found or found multiple times."
+    parameters:
+      path:
+        type: string
+        description: "File path relative to working directory"
+        required: true
+      search:
+        type: string
+        description: "Exact text to find (whitespace matters)"
+        required: true
+      replace:
+        type: string
+        description: "Replacement text"
+        required: true
+    timeout: 10
+    script: |
+      python3 - << 'PYEOF'
+      import os, sys
+      path    = os.path.join(os.environ.get('WORKING_DIR', '.'), os.environ.get('COMPANION_ARG_PATH', ''))
+      search  = os.environ.get('COMPANION_ARG_SEARCH', '')
+      replace = os.environ.get('COMPANION_ARG_REPLACE', '')
+      with open(path, 'r') as f:
+          content = f.read()
+      if search not in content:
+          print(f'ERROR: search text not found in {path}')
+          sys.exit(1)
+      count = content.count(search)
+      if count > 1:
+          print(f'ERROR: found {count} occurrences — be more specific')
+          sys.exit(1)
+      with open(path, 'w') as f:
+          f.write(content.replace(search, replace, 1))
+      print(f'OK: replaced 1 occurrence in {path}')
+      PYEOF
