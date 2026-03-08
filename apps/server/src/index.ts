@@ -490,11 +490,10 @@ async function handleHTTP(req: Request): Promise<Response> {
   return E404();
 }
 
-Bun.serve<{ session_id: string }>({
-  port: cfg.server.port,
+const serverOptions = {
   hostname: cfg.server.host,
   idleTimeout: 0,
-  fetch(req, server) {
+  fetch(req: Request, server: import("bun").Server) {
     if (req.headers.get("Upgrade") === "websocket") {
       const url = new URL(req.url);
       const token = url.searchParams.get("token") ?? "";
@@ -564,9 +563,32 @@ Bun.serve<{ session_id: string }>({
       subs.get(ws.data.session_id)?.delete(ws);
     },
   },
-});
+};
+
+function startServerWithFallback(
+  preferredPort: number,
+  maxAttempts = 20,
+): { server: import("bun").Server; port: number } {
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = preferredPort + i;
+    try {
+      const server = Bun.serve<{ session_id: string }>({ ...serverOptions, port });
+      if (i > 0) {
+        log.warn(`Port ${preferredPort} in use; started on ${port} instead.`);
+      }
+      return { server, port };
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === "EADDRINUSE") continue;
+      throw error;
+    }
+  }
+  throw new Error(`Unable to bind server. Ports ${preferredPort}-${preferredPort + maxAttempts - 1} are in use.`);
+}
+
+const started = startServerWithFallback(cfg.server.port);
 
 await runStartupChecks({ cfg, sandbox, embedBase, embedModelName });
 
-log.info(`Server listening on ${cfg.server.host}:${cfg.server.port}`);
+log.info(`Server listening on ${cfg.server.host}:${started.port}`);
 log.info(`DB: ${cfg.db.driver} | Tools: ${registry.list().length} | Skills: ${skills.length}`);

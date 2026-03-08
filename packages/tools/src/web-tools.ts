@@ -1,4 +1,4 @@
-import type { ToolDefinition } from "./index";
+import type { ToolDefinition } from "./types";
 
 export function createWebFetchTool(): ToolDefinition {
   return {

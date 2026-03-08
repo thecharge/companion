@@ -19,6 +19,20 @@ export interface ProposedSkillSpec {
 
 export const PENDING_SKILL_KEY = "pending_skill_proposal";
 
+const RESERVED_TOOL_NAMES = new Set([
+  "read_file",
+  "write_file",
+  "list_dir",
+  "search_history",
+  "search_memory",
+  "run_shell",
+  "run_tests",
+  "web_fetch",
+  "weather_lookup",
+  "skill_of_skills",
+  "create_skill_template",
+]);
+
 export function isAffirmative(text: string): boolean {
   const t = text.trim().toLowerCase();
   return /^(yes|y|confirm|approved|do it|create it|go ahead|ship it|ok|okay)\b/.test(t);
@@ -53,10 +67,43 @@ function cleanDescription(text: string): string {
     .slice(0, 240);
 }
 
+export function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
+  const normalized = message.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+  const afterFor = normalized.match(/\bfor\s+(.+)$/)?.[1] ?? normalized;
+  const tokens = afterFor
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(
+      (t) =>
+        !new Set(["please", "create", "add", "build", "generate", "a", "an", "the", "skill", "checks", "check"]).has(t),
+    )
+    .slice(0, 6);
+
+  const stem = tokens.join("_") || "generated_capability";
+
+  return {
+    name: `${stem}_skill`,
+    description: `Generated skill for: ${message.slice(0, 140)}`,
+    tool_name: `${stem}_task`,
+    why: "Explicit user request to create a reusable skill.",
+    parameters: [
+      {
+        name: "input",
+        type: "string",
+        description: "Primary input",
+        required: true,
+      },
+    ],
+  };
+}
+
 export function normalizeSkillSpec(input: Partial<ProposedSkillSpec>): ProposedSkillSpec {
   const name = cleanDescription(input.name ?? "new-skill") || "new-skill";
   const description = cleanDescription(input.description ?? "Generated skill") || "Generated skill";
-  const toolName = toToolName(input.tool_name ?? `${name} tool`);
+  let toolName = toToolName(input.tool_name ?? `${name} tool`);
+  if (RESERVED_TOOL_NAMES.has(toolName)) {
+    toolName = `${toolName}_skill`;
+  }
 
   const params: ProposedSkillParam[] = Array.isArray(input.parameters)
     ? input.parameters

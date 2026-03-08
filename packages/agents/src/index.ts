@@ -36,6 +36,7 @@ import {
   type ProposedSkillSpec,
   buildSkillAcquisitionPrompt,
   createSkillFromProposal,
+  defaultSkillProposalFromMessage,
   isAffirmative,
   isNegative,
   normalizeSkillSpec,
@@ -60,32 +61,6 @@ function hasExplicitSkillIntent(message: string): boolean {
     /(create|add|build|generate|acquire)\s+(a\s+)?skill\b/.test(q) ||
     /(teach|learn)\s+(this|that|new)\s+(capability|skill)\b/.test(q)
   );
-}
-
-function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
-  const stem =
-    message
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]+/g, " ")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 5)
-      .join("_") || "generated_skill";
-
-  return {
-    name: `${stem}_skill`,
-    description: `Generated skill from request: ${message.slice(0, 140)}`,
-    tool_name: `${stem}_tool`,
-    why: "Explicit user request to create a reusable skill.",
-    parameters: [
-      {
-        name: "input",
-        type: "string",
-        description: "Primary input",
-        required: true,
-      },
-    ],
-  };
 }
 
 // ── Types ─────────────────────────────────────────────────────
