@@ -50,25 +50,27 @@ tools:
           print(f'ERROR: skill already exists: {out}')
           sys.exit(1)
 
-      content = f'''name: {slug}
-version: "1.0.0"
-description: "{desc}"
-tags: [generated, scaffold]
-
-tools:
-  - name: {tool_name}
-    description: "{desc}"
-    parameters:
-      {arg_name}:
-        type: string
-        description: "Primary input"
-        required: true
-    timeout: 30
-    script: |
-      set -eu
-      echo "TODO: implement {tool_name}"
-      echo "{arg_name}: ${{COMPANION_ARG_{arg_name.upper()}}}"
-'''
+      content = "\n".join([
+          f"name: {slug}",
+          'version: "1.0.0"',
+          f'description: "{desc}"',
+          'tags: [generated, scaffold]',
+          '',
+          'tools:',
+          f'  - name: {tool_name}',
+          f'    description: "{desc}"',
+          '    parameters:',
+          f'      {arg_name}:',
+          '        type: string',
+          '        description: "Primary input"',
+          '        required: true',
+          '    timeout: 30',
+          '    script: |',
+          '      set -eu',
+          f'      echo "TODO: implement {tool_name}"',
+          f'      echo "{arg_name}: ${{COMPANION_ARG_{arg_name.upper()}}}"',
+          '',
+      ])
 
       with open(out, 'w', encoding='utf-8') as f:
           f.write(content)

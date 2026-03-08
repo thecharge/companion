@@ -43,6 +43,51 @@ import {
 
 const log = new Logger("agents");
 
+function shouldConsiderSkillAcquisition(message: string, blackboard: Blackboard): boolean {
+  const q = message.toLowerCase();
+  const explicitIntent =
+    /(create|add|build|generate|acquire)\s+(a\s+)?skill\b/.test(q) ||
+    /(teach|learn)\s+(this|that|new)\s+(capability|skill)\b/.test(q);
+  if (explicitIntent) return true;
+
+  const rejections = blackboard.read("rejections");
+  return Array.isArray(rejections) && rejections.length >= 3;
+}
+
+function hasExplicitSkillIntent(message: string): boolean {
+  const q = message.toLowerCase();
+  return (
+    /(create|add|build|generate|acquire)\s+(a\s+)?skill\b/.test(q) ||
+    /(teach|learn)\s+(this|that|new)\s+(capability|skill)\b/.test(q)
+  );
+}
+
+function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
+  const stem =
+    message
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]+/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 5)
+      .join("_") || "generated_skill";
+
+  return {
+    name: `${stem}_skill`,
+    description: `Generated skill from request: ${message.slice(0, 140)}`,
+    tool_name: `${stem}_tool`,
+    why: "Explicit user request to create a reusable skill.",
+    parameters: [
+      {
+        name: "input",
+        type: "string",
+        description: "Primary input",
+        required: true,
+      },
+    ],
+  };
+}
+
 // ── Types ─────────────────────────────────────────────────────
 
 export interface AgentRunParams {
@@ -122,7 +167,10 @@ class AgentRunner {
     const modelCfg = this.cfg.models[modelAlias];
     if (!modelCfg) throw new Error(`Unknown model alias: ${modelAlias}`);
 
-    const llm = createLLMClient(modelCfg);
+    let activeModelAlias = modelAlias;
+    let activeModelCfg = modelCfg;
+    let llm = createLLMClient(activeModelCfg);
+    let usedAuthFallback = false;
     const maxTurns = agentCfg.max_turns;
     const tools = agentCfg.tools
       .map((name) => this.registry.get(name)?.schema)
@@ -132,6 +180,7 @@ class AgentRunner {
     const systemPrompt = [
       `You are the ${this.agentName} agent. ${agentCfg.description}`,
       `Goal: ${params.blackboard.goal || params.user_message}`,
+      `Context:\n${params.blackboard.summary()}`,
       tools.length
         ? isReAct
           ? "You have tools. YOU must call them yourself by outputting JSON. DO NOT tell the user to run commands. DO NOT say 'use a tool'. YOU are the one calling the tools."
@@ -158,7 +207,7 @@ class AgentRunner {
       type: "agent_start",
       session_id: params.session_id,
       ts: new Date(),
-      payload: { agent: this.agentName, model: modelAlias },
+      payload: { agent: this.agentName, model: activeModelAlias },
     });
 
     let lastFailedSig: string | null = null;
@@ -176,7 +225,7 @@ class AgentRunner {
         });
       }
 
-      const useStructured = modelSupportsTools(modelCfg.model) && tools.length > 0;
+      const useStructured = modelSupportsTools(activeModelCfg.model) && tools.length > 0;
 
       let response: ChatMessage;
       try {
@@ -197,6 +246,36 @@ class AgentRunner {
           this._end(params.session_id, "cancelled");
           return { reply: "", stopped_reason: "cancelled" };
         }
+
+        const localCfg = this.cfg.models.local;
+        const authFailure = /HTTP (401|403)/.test(msg) || msg.includes("authentication_error");
+        const canFallback =
+          authFailure &&
+          !usedAuthFallback &&
+          activeModelAlias !== "local" &&
+          activeModelCfg.provider !== "ollama" &&
+          Boolean(localCfg);
+
+        if (canFallback && localCfg) {
+          usedAuthFallback = true;
+          activeModelAlias = "local";
+          activeModelCfg = localCfg;
+          llm = createLLMClient(localCfg);
+
+          bus.emit({
+            type: "agent_thought",
+            session_id: params.session_id,
+            ts: new Date(),
+            payload: {
+              agent: this.agentName,
+              text: "Cloud provider auth failed, falling back to local model alias.",
+            },
+          });
+
+          turn -= 1;
+          continue;
+        }
+
         log.error(`Agent ${this.agentName} LLM failed`, e);
         this._end(params.session_id, "error");
         if (/HTTP (401|403|404)/.test(msg)) throw new Error(msg); // fatal — let orchestrator abort
@@ -613,6 +692,9 @@ export class SessionProcessor {
     userMessage: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
+    const explicit = hasExplicitSkillIntent(userMessage);
+    if (!explicit && !shouldConsiderSkillAcquisition(userMessage, blackboard)) return null;
+
     const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
     if (scratch[PENDING_SKILL_KEY]) return null;
 
@@ -642,9 +724,11 @@ export class SessionProcessor {
         .trim();
 
       const parsed = JSON.parse(cleaned) as { should_acquire?: boolean } & Partial<ProposedSkillSpec>;
-      if (!parsed.should_acquire) return null;
+      if (!parsed.should_acquire && !explicit) return null;
 
-      const proposal = normalizeSkillSpec(parsed);
+      const proposal = normalizeSkillSpec(
+        parsed.should_acquire ? parsed : defaultSkillProposalFromMessage(userMessage),
+      );
       blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
       blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
 
@@ -655,6 +739,17 @@ export class SessionProcessor {
         "Reply 'yes' to create it now, or 'no' to continue without creating it.",
       ].join("\n");
     } catch {
+      if (explicit) {
+        const proposal = normalizeSkillSpec(defaultSkillProposalFromMessage(userMessage));
+        blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
+        blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
+        return [
+          `I detected a reusable capability gap and propose a new skill: \"${proposal.name}\".`,
+          `Reason: ${proposal.why}`,
+          `Planned tool: ${proposal.tool_name}`,
+          "Reply 'yes' to create it now, or 'no' to continue without creating it.",
+        ].join("\n");
+      }
       return null;
     }
   }

@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import type { Config, SandboxConfig, SandboxRuntime } from "@companion/config";
 import type { DB, SessionId } from "@companion/db";
 import type { OAITool } from "@companion/llm";
+import { createWeatherLookupTool, createWebFetchTool } from "./web-tools";
 
 // ── Tool types ────────────────────────────────────────────────
 
@@ -530,39 +531,6 @@ const runShellTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   },
 });
 
-const webFetchTool: ToolDefinition = {
-  schema: {
-    type: "function",
-    function: {
-      name: "web_fetch",
-      description: "Fetch the text content of a URL.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: { type: "string", description: "URL to fetch" },
-        },
-        required: ["url"],
-      },
-    },
-  },
-  handler: async (args) => {
-    const url = String(args["url"] ?? "");
-    const cfg = { timeout: 15_000 };
-    const res = await fetch(url, { signal: AbortSignal.timeout(cfg.timeout) });
-    if (!res.ok) return `HTTP ${res.status}: ${url}`;
-    const ct = res.headers.get("content-type") ?? "";
-    const text = await res.text();
-    if (ct.includes("html")) {
-      // Strip tags — crude but avoids a parser dependency
-      return text
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s{2,}/g, " ")
-        .slice(0, 8000);
-    }
-    return text.slice(0, 8000);
-  },
-};
-
 const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   schema: {
     type: "function",
@@ -604,7 +572,8 @@ export function createToolRegistry(cfg: Config, _db: DB): { registry: ToolRegist
   registry.register(listDirTool);
   registry.register(searchHistoryTool);
   registry.register(runShellTool(sandbox));
-  registry.register(webFetchTool);
+  registry.register(createWebFetchTool());
+  registry.register(createWeatherLookupTool());
   registry.register(runTestsTool(sandbox));
   // search_memory is wired by MemoryService after vector store is available
   // — registered separately in the server after memory is initialised

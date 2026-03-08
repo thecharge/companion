@@ -64,12 +64,13 @@ Mode behavior is policy-based, not provider-biased:
 - `local` uses local aliases only.
 - `balanced` uses hybrid alias remapping (local + cloud where configured).
 - `cloud` prefers cloud aliases and falls back only when missing config.
+- If cloud credentials fail at runtime (401/403), Companion falls back to `local` alias for continuity.
 
 Set default mode under:
 
 ```yaml
 mode:
-  default: local
+  default: balanced
 ```
 
 ## API Smoke Test

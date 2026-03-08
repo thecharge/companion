@@ -15,6 +15,9 @@ bun run tui
 - `balanced`: hybrid alias routing for mixed workloads.
 - `cloud`: cloud-preferred alias routing.
 
+Runtime continuity rule:
+- If cloud credentials return 401/403 during a run, Companion automatically falls back to local alias to keep the session usable.
+
 Set default in `companion.yaml`:
 
 ```yaml
@@ -34,6 +37,11 @@ mode:
 1. Create session.
 2. Post messages with optional `working_dir`.
 3. Read SSE stream output and task events.
+
+Mode validation quick checks:
+- `local`: verify no cloud key is required and tasks complete.
+- `balanced`: verify cloud path works when keys are valid, and falls back to local on auth error.
+- `cloud`: verify cloud alias usage and expected fallback behavior when provider errors occur.
 
 ```bash
 curl -s -X POST http://localhost:3000/sessions \
@@ -57,6 +65,20 @@ When Companion detects a reusable missing capability:
 2. You respond `yes` or `no`.
 3. On `yes`, a new file is generated under `skills/<skill-name>/skill.yaml`.
 4. Restart the server to load the new skill.
+
+## Brownfield Usage Pattern
+
+Use with existing repositories:
+- Set `working_dir` to repo root.
+- Ask first for analysis-only actions before write actions.
+- Require generated patches to pass repo checks before merge.
+
+## Greenfield Usage Pattern
+
+Use with new repositories:
+- Set `working_dir` to empty project folder.
+- Ask for scaffold + tests + CI in first request.
+- Add missing recurring capabilities via the skill acquisition confirmation loop.
 
 ## Runtime Safety Notes
 
