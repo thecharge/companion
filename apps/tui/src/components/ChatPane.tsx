@@ -74,6 +74,7 @@ export function ChatPane({
   messages,
   task,
   actionLog,
+  workingDir,
   streaming,
   active,
   wsConnected,
@@ -85,6 +86,7 @@ export function ChatPane({
   messages: Msg[];
   task: ActiveTask | null;
   actionLog: LogEntry[];
+  workingDir: string;
   streaming: boolean;
   active: boolean;
   wsConnected: boolean;
@@ -132,10 +134,7 @@ export function ChatPane({
   });
 
   const mode = session?.mode ?? SessionMode.Local;
-  const visibleMessages = [...messages]
-    .reverse()
-    .slice(scrollOffset, scrollOffset + VISIBLE_MESSAGES)
-    .reverse();
+  const visibleMessages = [...messages].reverse().slice(scrollOffset, scrollOffset + VISIBLE_MESSAGES).reverse();
 
   return (
     <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor={active ? "cyan" : "gray"}>
@@ -166,6 +165,10 @@ export function ChatPane({
               summary: {session.summary.slice(0, 120)}
             </Text>
           )}
+
+          <Text color="gray" dimColor wrap="truncate-end">
+            working_dir: {workingDir}
+          </Text>
 
           {scrollOffset > 0 && (
             <Text color="gray" dimColor>
@@ -203,7 +206,7 @@ export function ChatPane({
                 placeholder="Message..."
               />
             ) : (
-              <Text color="gray"> / type up/down scroll 1/2/3 mode q quit</Text>
+              <Text color="gray"> / type up/down scroll 1/2/3 mode /wd &lt;path&gt; q quit</Text>
             )}
           </Box>
         </>
