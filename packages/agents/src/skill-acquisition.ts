@@ -67,6 +67,11 @@ function cleanDescription(text: string): string {
     .slice(0, 240);
 }
 
+function isGitBranchHygieneSpec(spec: ProposedSkillSpec): boolean {
+  const blob = `${spec.name} ${spec.tool_name} ${spec.description}`.toLowerCase();
+  return blob.includes("git") && blob.includes("branch") && blob.includes("hygiene");
+}
+
 export function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
   const normalized = message.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
   const afterFor = normalized.match(/\bfor\s+(.+)$/)?.[1] ?? normalized;
@@ -161,6 +166,65 @@ export function renderSkillYaml(spec: ProposedSkillSpec): string {
 
   const firstArg = spec.parameters[0]?.name ?? "input";
   const scriptHintLine = spec.script_hint ? `# Hint: ${spec.script_hint}\n` : "";
+  const scriptBody = isGitBranchHygieneSpec(spec)
+    ? [
+        "python3 - << 'PYEOF'",
+        "import os, sys, time, subprocess",
+        "from pathlib import Path",
+        "",
+        "working_dir = Path(os.environ.get('WORKING_DIR', '.')).resolve()",
+        "repo_rel = os.environ.get('COMPANION_ARG_REPO_PATH', '.').strip() or '.'",
+        "stale_raw = os.environ.get('COMPANION_ARG_STALE_DAYS', '30').strip() or '30'",
+        "try:",
+        "    stale_days = int(float(stale_raw))",
+        "except Exception:",
+        "    stale_days = 30",
+        "repo = (working_dir / repo_rel).resolve()",
+        "if not str(repo).startswith(str(working_dir)):",
+        "    print('ERROR: repo_path escapes working dir')",
+        "    sys.exit(1)",
+        "",
+        "def git(*args):",
+        "    p = subprocess.run(['git', *args], cwd=repo, text=True, capture_output=True)",
+        "    return p.returncode, p.stdout.strip(), p.stderr.strip()",
+        "",
+        "if git('rev-parse', '--git-dir')[0] != 0:",
+        "    print(f'ERROR: not a git repo: {repo}')",
+        "    sys.exit(1)",
+        "",
+        "_, branch, _ = git('rev-parse', '--abbrev-ref', 'HEAD')",
+        "_, status, _ = git('status', '--porcelain')",
+        "print(f'Repository: {repo}')",
+        "print(f'Current branch: {branch}')",
+        "print(f'Working tree clean: {\"yes\" if not status else \"no\"}')",
+        "",
+        "up_code, upstream, _ = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')",
+        "if up_code == 0 and upstream:",
+        "    c, counts, _ = git('rev-list', '--left-right', '--count', f'{upstream}...HEAD')",
+        "    if c == 0 and counts:",
+        "        behind, ahead = counts.split()",
+        "        print(f'Upstream: {upstream} | Ahead: {ahead} | Behind: {behind}')",
+        "else:",
+        "    print('Upstream: not configured')",
+        "",
+        "_, refs, _ = git('for-each-ref', '--sort=-committerdate', '--format=%(refname:short)\\t%(committerdate:unix)', 'refs/heads')",
+        "cutoff = time.time() - stale_days * 86400",
+        "stale = []",
+        "for line in refs.splitlines():",
+        "    name, ts = line.split('\\t', 1)",
+        "    if int(ts) < cutoff and name not in {'main','master','develop',branch}:",
+        "        stale.append(name)",
+        "print(f'Stale branches (> {stale_days} days): {len(stale)}')",
+        "for b in stale[:20]:",
+        "    print(f'  {b}')",
+        "print('Branch hygiene report complete.')",
+        "PYEOF",
+      ].join("\n")
+    : `${scriptHintLine}echo "TODO: implement ${spec.tool_name}"\n echo "Received ${firstArg}: ${"$"}{COMPANION_ARG_${firstArg.toUpperCase()}}"`;
+  const indentedScriptBody = scriptBody
+    .split("\n")
+    .map((line) => `      ${line}`)
+    .join("\n");
 
   return `name: ${slug}
 version: "1.0.0"
@@ -175,8 +239,7 @@ ${paramsBlock}
     timeout: 30
     script: |
       set -eu
-      ${scriptHintLine}echo "TODO: implement ${spec.tool_name}"
-      echo "Received ${firstArg}: ${"$"}{COMPANION_ARG_${firstArg.toUpperCase()}}"
+${indentedScriptBody}
 `;
 }
 

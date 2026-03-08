@@ -30,6 +30,7 @@ import {
   stripThinking,
 } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
+import { loadSkillsDir, registerSkills } from "@companion/skills";
 import type { ToolContext, ToolRegistry } from "@companion/tools";
 import {
   PENDING_SKILL_KEY,
@@ -643,9 +644,13 @@ export class SessionProcessor {
     if (isAffirmative(userMessage)) {
       try {
         const created = await createSkillFromProposal(pending);
+        const loadedSkills = await loadSkillsDir("./skills");
+        await registerSkills(loadedSkills, this.registry);
+        this.enableToolForWorkers(created.spec.tool_name);
+
         blackboard.setScratchpad(PENDING_SKILL_KEY, null);
         blackboard.appendObservation(`Created skill ${created.spec.name} at ${created.path}`);
-        return `Created skill \"${created.spec.name}\" with tool \"${created.spec.tool_name}\" at ${created.path}. It will be loaded on next server start.`;
+        return `Created skill \"${created.spec.name}\" with tool \"${created.spec.tool_name}\" at ${created.path}. It is now registered and available for this session.`;
       } catch (error) {
         blackboard.setScratchpad(PENDING_SKILL_KEY, null);
         return `Skill creation failed: ${String(error)}`;
@@ -673,6 +678,18 @@ export class SessionProcessor {
     const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
     if (scratch[PENDING_SKILL_KEY]) return null;
 
+    if (explicit) {
+      const proposal = normalizeSkillSpec(defaultSkillProposalFromMessage(userMessage));
+      blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
+      blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
+      return [
+        `I detected a reusable capability gap and propose a new skill: \"${proposal.name}\".`,
+        `Reason: ${proposal.why}`,
+        `Planned tool: ${proposal.tool_name}`,
+        "Reply 'yes' to create it now, or 'no' to continue without creating it.",
+      ].join("\n");
+    }
+
     const toolNames = this.registry.list().map((tool) => tool.function.name);
     const orchLLM = createLLMClient(orchCfg);
 
@@ -699,11 +716,9 @@ export class SessionProcessor {
         .trim();
 
       const parsed = JSON.parse(cleaned) as { should_acquire?: boolean } & Partial<ProposedSkillSpec>;
-      if (!parsed.should_acquire && !explicit) return null;
+      if (!parsed.should_acquire) return null;
 
-      const proposal = normalizeSkillSpec(
-        parsed.should_acquire ? parsed : defaultSkillProposalFromMessage(userMessage),
-      );
+      const proposal = normalizeSkillSpec(parsed);
       blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
       blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
 
@@ -714,18 +729,17 @@ export class SessionProcessor {
         "Reply 'yes' to create it now, or 'no' to continue without creating it.",
       ].join("\n");
     } catch {
-      if (explicit) {
-        const proposal = normalizeSkillSpec(defaultSkillProposalFromMessage(userMessage));
-        blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
-        blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
-        return [
-          `I detected a reusable capability gap and propose a new skill: \"${proposal.name}\".`,
-          `Reason: ${proposal.why}`,
-          `Planned tool: ${proposal.tool_name}`,
-          "Reply 'yes' to create it now, or 'no' to continue without creating it.",
-        ].join("\n");
-      }
       return null;
+    }
+  }
+
+  private enableToolForWorkers(toolName: string): void {
+    for (const agentName of ["engineer", "analyst"] as const) {
+      const agent = this.cfg.agents[agentName];
+      if (!agent) continue;
+      if (!agent.tools.includes(toolName)) {
+        agent.tools.push(toolName);
+      }
     }
   }
 

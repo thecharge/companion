@@ -52,6 +52,7 @@
         "@companion/db": "workspace:*",
         "@companion/llm": "workspace:*",
         "@companion/memory": "workspace:*",
+        "@companion/skills": "workspace:*",
         "@companion/tools": "workspace:*",
       },
       "devDependencies": {

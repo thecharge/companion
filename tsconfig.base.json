@@ -11,6 +11,10 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@companion/*": ["packages/*/src/index.ts"]
+    },
     "noEmit": true
   }
 }
