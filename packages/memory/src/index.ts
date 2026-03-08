@@ -38,13 +38,15 @@ export interface VectorStore {
 // Cosine similarity — used as fallback when sqlite-vec is unavailable
 function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0,
-    na = 0,
-    nb = 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i]! * b[i]!;
-    na += a[i]! * a[i]!;
-    nb += b[i]! * b[i]!;
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    dot += av * bv;
+    na += av * av;
+    nb += bv * bv;
   }
   const denom = Math.sqrt(na) * Math.sqrt(nb);
   return denom === 0 ? 0 : dot / denom;
@@ -59,7 +61,7 @@ function cosine(a: number[], b: number[]): number {
  */
 export class SqliteVecStore implements VectorStore {
   private db: Database;
-  private nativeVec: boolean = false;
+  private nativeVec = false;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath, { create: true });
@@ -93,7 +95,7 @@ export class SqliteVecStore implements VectorStore {
   }
 
   async upsert(entry: VectorEntry): Promise<void> {
-    const embBytes = new Float32Array(entry.embedding).buffer;
+    const embBytes = new Uint8Array(new Float32Array(entry.embedding).buffer);
     this.db
       .prepare(`
       INSERT INTO vectors (id, session_id, content, embedding, metadata)
@@ -149,8 +151,8 @@ export interface Chunk {
 
 export class SlidingWindow {
   constructor(
-    private chunkSize: number = 2000,
-    private overlap: number = 200,
+    private chunkSize = 2000,
+    private overlap = 200,
   ) {}
 
   splitIntoChunks(text: string): Chunk[] {
@@ -161,8 +163,6 @@ export class SlidingWindow {
 
     while (pos < text.length) {
       let end = Math.min(pos + this.chunkSize, text.length);
-
-      // Prefer a natural boundary within the last 100 chars of the chunk
       if (end < text.length) {
         const lastNewline = text.lastIndexOf("\n", end);
         if (lastNewline > end - 100 && lastNewline > pos) {
@@ -204,8 +204,8 @@ export class SlidingWindow {
  */
 export class ContextBuilder {
   constructor(
-    private maxMessages: number = 40,
-    private maxTokens: number = 8000,
+    private maxMessages = 40,
+    private maxTokens = 8000,
   ) {}
 
   build(opts: {
@@ -242,7 +242,7 @@ export class ContextBuilder {
    * "assistant" message containing tool_calls. That breaks every LLM API.
    */
   trim(messages: ChatMessage[]): ChatMessage[] {
-    let result = [...messages];
+    const result = [...messages];
 
     // Keep the system message pinned; trim from index 1 onwards
     while (result.length > this.maxMessages + 1 || this.countTokens(result) > this.maxTokens) {

@@ -7,7 +7,7 @@
  * - All schema migrations are idempotent (IF NOT EXISTS / IF NOT EXIST)
  */
 
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import type { Config } from "@companion/config";
 import {
   type Message,
@@ -176,7 +176,9 @@ class SqliteSessionStore implements SessionStore {
       INSERT INTO sessions (id, title, mode) VALUES (?, ?, ?)
     `)
       .run(id, title, mode);
-    return (await this.get(id))!;
+    const created = await this.get(id);
+    if (!created) throw new Error(`Failed to create session ${id}`);
+    return created;
   }
 
   async get(id: SessionId): Promise<Session | null> {
@@ -187,7 +189,7 @@ class SqliteSessionStore implements SessionStore {
   async list(opts: { status?: SessionStatus; limit?: number; offset?: number } = {}): Promise<Session[]> {
     const { status, limit = 50, offset = 0 } = opts;
     let sql = "SELECT * FROM sessions";
-    const params: unknown[] = [];
+    const params: SQLQueryBindings[] = [];
     if (status) {
       sql += " WHERE status = ?";
       params.push(status);
@@ -205,7 +207,7 @@ class SqliteSessionStore implements SessionStore {
     },
   ): Promise<void> {
     const sets: string[] = ["updated_at = datetime('now','utc')"];
-    const vals: unknown[] = [];
+    const vals: SQLQueryBindings[] = [];
 
     if (patch.title !== undefined) {
       sets.push("title = ?");
@@ -289,7 +291,9 @@ class SqliteMessageStore implements MessageStore {
         msg.name ?? null,
         msg.tokens ?? null,
       );
-    return (await this.get(msg.id))!;
+    const created = await this.get(msg.id);
+    if (!created) throw new Error(`Failed to create message ${msg.id}`);
+    return created;
   }
 
   async list(sessionId: SessionId, opts: { limit?: number; offset?: number } = {}): Promise<Message[]> {

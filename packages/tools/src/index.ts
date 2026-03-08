@@ -379,18 +379,39 @@ export class SandboxExecutor {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     // Lazy probe — in case probe() was not called (tests, etc.)
     if (!this.strategy) await this.probe();
-    const strategy = this.strategy!;
+    const strategy = this.strategy;
+    if (!strategy) {
+      throw new Error("Sandbox strategy unavailable after probe");
+    }
 
     if (strategy.kind === "refused") {
       throw new Error(`Shell execution refused: ${strategy.reason}`);
     }
 
     const safeDir = this.safeWorkingDir(workingDir);
-    let proc: ReturnType<typeof Bun.spawn>;
+
+    const collect = async (proc: {
+      exited: Promise<number>;
+      kill: () => void;
+      stdout: ReadableStream<Uint8Array>;
+      stderr: ReadableStream<Uint8Array>;
+      exitCode: number | null;
+    }) => {
+      const timer = setTimeout(() => proc.kill(), timeoutMs);
+      try {
+        await proc.exited;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      return { stdout, stderr, exitCode: proc.exitCode ?? 1 };
+    };
 
     if (strategy.kind === "container") {
       const { runtime, image, network } = strategy;
-      proc = Bun.spawn(
+      const proc = Bun.spawn(
         [
           runtime,
           "run",
@@ -406,21 +427,12 @@ export class SandboxExecutor {
         ],
         { stdout: "pipe", stderr: "pipe" },
       );
-    } else {
-      // direct — warn is already surfaced at probe time
-      proc = Bun.spawn(["sh", "-c", command], { cwd: safeDir, stdout: "pipe", stderr: "pipe" });
+      return collect(proc);
     }
 
-    const timer = setTimeout(() => proc.kill(), timeoutMs);
-    try {
-      await proc.exited;
-    } finally {
-      clearTimeout(timer);
-    }
-
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    return { stdout, stderr, exitCode: proc.exitCode ?? 1 };
+    // direct — warn is already surfaced at probe time
+    const proc = Bun.spawn(["sh", "-c", command], { cwd: safeDir, stdout: "pipe", stderr: "pipe" });
+    return collect(proc);
   }
 
   /** Kill all companion-managed containers left from a previous crash. */
@@ -538,7 +550,7 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
 
 // ── Factory ───────────────────────────────────────────────────
 
-export function createToolRegistry(cfg: Config, db: DB): { registry: ToolRegistry; sandbox: SandboxExecutor } {
+export function createToolRegistry(cfg: Config, _db: DB): { registry: ToolRegistry; sandbox: SandboxExecutor } {
   const sandbox = new SandboxExecutor(cfg);
   const registry = new ToolRegistry();
 

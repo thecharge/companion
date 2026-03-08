@@ -8,9 +8,9 @@
  * The subprocess environment is built from scratch — server secrets do not leak.
  */
 
+import { dirname, join } from "node:path";
+import type { ToolContext, ToolRegistry } from "@companion/tools";
 import { parse as parseYaml } from "yaml";
-import { join, dirname } from "node:path";
-import type { ToolRegistry, ToolContext } from "@companion/tools";
 
 // ── Skill schema (runtime validated, not Zod — keeps dep tree clean) ──
 
@@ -109,15 +109,15 @@ export function registerSkills(skills: Skill[], registry: ToolRegistry): void {
   }
 }
 
-function makeHandler(skill: Skill, tool: SkillTool, _dir: string) {
+function makeHandler(_skill: Skill, tool: SkillTool, _dir: string) {
   return async (args: Record<string, unknown>, ctx: ToolContext): Promise<string> => {
     const timeoutMs = (tool.timeout ?? 30) * 1000;
 
     // Build safe environment — server secrets NEVER forwarded
     const safeEnv: Record<string, string> = {
-      PATH: process.env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin",
-      HOME: process.env["HOME"] ?? "/tmp",
-      TMPDIR: process.env["TMPDIR"] ?? "/tmp",
+      PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+      HOME: process.env.HOME ?? "/tmp",
+      TMPDIR: process.env.TMPDIR ?? "/tmp",
       WORKING_DIR: ctx.working_dir,
       SESSION_ID: String(ctx.session_id),
     };

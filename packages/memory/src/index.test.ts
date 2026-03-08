@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SlidingWindow, ContextBuilder } from "./index";
 import type { ChatMessage } from "@companion/llm";
+import { ContextBuilder, SlidingWindow } from "./index";
 
 describe("SlidingWindow", () => {
   test("splits text into chunks", () => {
@@ -8,7 +8,7 @@ describe("SlidingWindow", () => {
     const text = "a".repeat(250);
     const chunks = sw.splitIntoChunks(text);
     expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]!.pageNum).toBe(0);
+    expect(chunks[0]?.pageNum).toBe(0);
     for (const c of chunks) expect(c.totalPages).toBe(chunks.length);
   });
 
@@ -35,9 +35,9 @@ describe("ContextBuilder", () => {
       systemPrompt: "You are helpful.",
       history: [{ role: "user", content: "hello" }],
     });
-    expect(msgs[0]!.role).toBe("system");
-    expect(msgs[0]!.content).toContain("You are helpful.");
-    expect(msgs[1]!.role).toBe("user");
+    expect(msgs[0]?.role).toBe("system");
+    expect(msgs[0]?.content).toContain("You are helpful.");
+    expect(msgs[1]?.role).toBe("user");
   });
 
   test("fuses recall into system prompt (single system block)", () => {
@@ -49,7 +49,7 @@ describe("ContextBuilder", () => {
     });
     const systemBlocks = msgs.filter((m) => m.role === "system");
     expect(systemBlocks.length).toBe(1);
-    expect(systemBlocks[0]!.content).toContain("memory 1");
+    expect(systemBlocks[0]?.content).toContain("memory 1");
   });
 
   test("pair-aware trim never leaves orphaned tool messages", () => {
@@ -69,7 +69,7 @@ describe("ContextBuilder", () => {
     const msgs = cb.build({ systemPrompt: "sys", history });
     // No orphaned tool messages — every tool message must be preceded by assistant with tool_calls
     for (let i = 0; i < msgs.length; i++) {
-      if (msgs[i]!.role === "tool") {
+      if (msgs[i]?.role === "tool") {
         const prev = msgs[i - 1];
         expect(prev?.role).toBe("assistant");
         expect(prev?.tool_calls?.length).toBeGreaterThan(0);

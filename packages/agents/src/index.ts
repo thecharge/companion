@@ -19,18 +19,18 @@
  */
 
 import type { Config } from "@companion/config";
-import { Blackboard, Logger, bus, type SessionId } from "@companion/core";
+import { type Blackboard, Logger, type SessionId, bus } from "@companion/core";
 import type { DB } from "@companion/db";
 import {
+  type ChatMessage,
+  type OAITool,
   createLLMClient,
   isToolCall,
   modelSupportsTools,
   stripThinking,
-  type ChatMessage,
-  type OAITool,
 } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
-import type { ToolRegistry, ToolContext } from "@companion/tools";
+import type { ToolContext, ToolRegistry } from "@companion/tools";
 
 const log = new Logger("agents");
 
@@ -54,7 +54,7 @@ export interface AgentRunResult {
 // ── Orchestrator prompt — fires once, picks one agent ─────────
 
 function buildOrchestratorPrompt(bb: Blackboard, mode: string): string {
-  const agents = ["engineer", "analyst", "responder"];
+  const _agents = ["engineer", "analyst", "responder"];
   return `You are a router. Pick ONE agent for this task. Reply with ONLY valid JSON.
 
 Mode: ${mode}
@@ -158,14 +158,14 @@ class AgentRunner {
       try {
         if (useStructured) {
           const res = await llm.chat({ messages, tools, tool_choice: "auto", signal });
-          response = res.choices[0]!.message;
+          response = res.choices[0]?.message;
         } else {
           const res = await llm.chat({
             messages: [...messages, { role: "system", content: buildReActPrompt(tools) }],
             json_mode: true,
             signal,
           });
-          response = await this.parseReAct(res.choices[0]!.message, messages, llm, signal);
+          response = await this.parseReAct(res.choices[0]?.message, messages, llm, signal);
         }
       } catch (e) {
         const msg = String(e);
@@ -319,7 +319,7 @@ class AgentRunner {
           json_mode: true,
           signal,
         });
-        return this.parseReAct(fix.choices[0]!.message, messages, llm, signal, depth + 1);
+        return this.parseReAct(fix.choices[0]?.message, messages, llm, signal, depth + 1);
       } catch {
         return { role: "assistant", content: raw };
       }
@@ -343,7 +343,7 @@ class AgentRunner {
           json_mode: true,
           signal,
         });
-        return this.parseReAct(fix.choices[0]!.message, messages, llm, signal, depth + 1);
+        return this.parseReAct(fix.choices[0]?.message, messages, llm, signal, depth + 1);
       } catch {
         return { role: "assistant", content: raw };
       }
@@ -493,7 +493,7 @@ export class SessionProcessor {
     // ── Step 3: responder synthesises — no orchestrator re-eval ──
     // This is the key fix: we NEVER give the orchestrator a second turn.
     // After engineer/analyst succeeds, responder always runs next.
-    const respDef = this.cfg.agents["responder"];
+    const respDef = this.cfg.agents.responder;
     if (!respDef) {
       return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
     }

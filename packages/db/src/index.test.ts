@@ -1,6 +1,6 @@
-import { describe, expect, test, beforeEach } from "bun:test";
-import { createMemoryDB, ConcurrencyError } from "./index";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { asSession, newId } from "@companion/core";
+import { ConcurrencyError, createMemoryDB } from "./index";
 
 describe("SqliteDB", () => {
   let db: ReturnType<typeof createMemoryDB>;
@@ -65,7 +65,7 @@ describe("SqliteDB", () => {
     expect(msg.content).toBe("hello");
     const list = await db.messages.list(sid);
     expect(list.length).toBe(1);
-    expect(list[0]!.role).toBe("user");
+    expect(list[0]?.role).toBe("user");
   });
 
   test("deletes session cascades to messages", async () => {

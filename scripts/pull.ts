@@ -13,6 +13,10 @@
 
 import { loadConfig } from "../packages/config/src/index";
 
+function modelPrefix(model: string): string {
+  return model.split(":")[0] ?? model;
+}
+
 const cfg = await loadConfig("./companion.yaml");
 
 const ollamaModels = Object.entries(cfg.models).filter(([, m]) => m.provider === "ollama");
@@ -34,15 +38,13 @@ for (const [alias, modelCfg] of ollamaModels) {
     available = data.models?.map((m) => m.name) ?? [];
   } catch (e) {
     console.error(`\n[error] Ollama not reachable at ${base} for alias "${alias}".`);
-    console.error(`        Start it with: ollama serve`);
+    console.error("        Start it with: ollama serve");
     console.error(`        Error: ${e}`);
     process.exit(1);
   }
 
   // 2. Check if already present (match by name prefix, e.g. "qwen2.5:3b" matches "qwen2.5:3b")
-  const alreadyPresent = available.some(
-    (n) => n === modelCfg.model || n.startsWith(modelCfg.model.split(":")[0]! + ":"),
-  );
+  const alreadyPresent = available.some((n) => n === modelCfg.model || n.startsWith(`${modelPrefix(modelCfg.model)}:`));
 
   if (alreadyPresent) {
     console.log(`[ok]   "${modelCfg.model}" (alias: ${alias}) — already present`);
@@ -118,7 +120,7 @@ try {
   const tagsRes = await fetch(`${embedBase}/api/tags`, { signal: AbortSignal.timeout(5000) });
   const tags = (await tagsRes.json()) as { models?: Array<{ name: string }> };
   const available = tags.models?.map((x: { name: string }) => x.name) ?? [];
-  const present = available.some((n: string) => n.startsWith(embedModel.split(":")[0]!));
+  const present = available.some((n: string) => n.startsWith(modelPrefix(embedModel)));
 
   if (present) {
     console.log(`[ok]   "${embedModel}" — already present`);

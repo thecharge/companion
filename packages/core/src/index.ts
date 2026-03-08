@@ -38,8 +38,30 @@ export function err<E>(error: E): Result<never, E> {
 
 // ── Session / Message types ───────────────────────────────────
 
-export type SessionStatus = "active" | "archived" | "summarised";
-export type SessionMode = "local" | "balanced" | "cloud";
+export const SessionStatus = {
+  Active: "active",
+  Archived: "archived",
+  Summarised: "summarised",
+} as const;
+
+export type SessionStatus = (typeof SessionStatus)[keyof typeof SessionStatus];
+
+export const SessionMode = {
+  Local: "local",
+  Balanced: "balanced",
+  Cloud: "cloud",
+} as const;
+
+export type SessionMode = (typeof SessionMode)[keyof typeof SessionMode];
+
+export const MessageRole = {
+  User: "user",
+  Assistant: "assistant",
+  System: "system",
+  Tool: "tool",
+} as const;
+
+export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
 
 export interface Session {
   id: SessionId;
@@ -57,7 +79,7 @@ export interface Session {
 export interface Message {
   id: MessageId;
   session_id: SessionId;
-  role: "user" | "assistant" | "system" | "tool";
+  role: MessageRole;
   content: string;
   tool_calls?: unknown;
   tool_call_id?: string;
@@ -180,7 +202,7 @@ export class Blackboard {
       const grouped: Record<string, string[]> = {};
       for (const r of rej) {
         grouped[r.target] ??= [];
-        grouped[r.target]!.push(`[R${r.round}] ${r.reason}`);
+        grouped[r.target]?.push(`[R${r.round}] ${r.reason}`);
       }
       lines.push("DEAD ENDS — DO NOT RETRY:");
       for (const [target, reasons] of Object.entries(grouped)) {
@@ -194,17 +216,20 @@ export class Blackboard {
 
 // ── EventBus ──────────────────────────────────────────────────
 
-export type EventType =
-  | "message"
-  | "tool_start"
-  | "tool_end"
-  | "agent_start"
-  | "agent_end"
-  | "agent_thought"
-  | "orchestrator_decision"
-  | "orchestrator_verify"
-  | "session_update"
-  | "error";
+export const EventType = {
+  Message: "message",
+  ToolStart: "tool_start",
+  ToolEnd: "tool_end",
+  AgentStart: "agent_start",
+  AgentEnd: "agent_end",
+  AgentThought: "agent_thought",
+  OrchestratorDecision: "orchestrator_decision",
+  OrchestratorVerify: "orchestrator_verify",
+  SessionUpdate: "session_update",
+  Error: "error",
+} as const;
+
+export type EventType = (typeof EventType)[keyof typeof EventType];
 
 export interface CompanionEvent {
   type: EventType;
@@ -221,13 +246,24 @@ class EventBus {
   on(type: EventType | "*", handler: Handler): () => void {
     const key = type as string;
     if (!this.handlers.has(key)) this.handlers.set(key, new Set());
-    this.handlers.get(key)!.add(handler);
+    this.handlers.get(key)?.add(handler);
     return () => this.handlers.get(key)?.delete(handler);
   }
 
   emit(event: CompanionEvent): void {
-    this.handlers.get(event.type)?.forEach((h) => h(event));
-    this.handlers.get("*")?.forEach((h) => h(event));
+    const typedHandlers = this.handlers.get(event.type);
+    if (typedHandlers) {
+      for (const handler of typedHandlers) {
+        handler(event);
+      }
+    }
+
+    const wildcardHandlers = this.handlers.get("*");
+    if (wildcardHandlers) {
+      for (const handler of wildcardHandlers) {
+        handler(event);
+      }
+    }
   }
 }
 

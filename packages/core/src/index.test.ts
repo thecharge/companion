@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Blackboard, newId, ok, err, asSession, asMessage } from "./index";
+import { Blackboard, asMessage, asSession, err, newId, ok } from "./index";
 
 describe("newId", () => {
   test("generates unique IDs", () => {

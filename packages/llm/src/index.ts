@@ -76,7 +76,7 @@ export function modelSupportsTools(model: string): boolean {
   const lower = model.toLowerCase();
   // qwen3 (all sizes) — native tool calling via Ollama /api/chat tools param.
   // Block only models confirmed to NOT support structured tool calls.
-  const noTools = ["qwen2.5:3b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
+  const noTools = ["qwen3:1.7b", "qwen:3b", "phi3:mini", "tinyllama", "gemma:2b", "qwen2.5:1b"];
   return !noTools.some((m) => lower.includes(m));
 }
 
@@ -151,32 +151,34 @@ export class LLMClient {
   }
 
   private toOllamaMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
-    return messages.flatMap((m) => {
+    const out: Array<Record<string, unknown>> = [];
+    for (const m of messages) {
       if (m.role === "tool") {
-        return [{ role: "tool", content: m.content ?? "", tool_call_id: m.tool_call_id }];
+        out.push({ role: "tool", content: m.content ?? "", tool_call_id: m.tool_call_id });
+        continue;
       }
       if (m.role === "assistant" && m.tool_calls?.length) {
-        return [
-          {
-            role: "assistant",
-            content: m.content ?? "",
-            tool_calls: m.tool_calls.map((tc) => ({
-              function: {
-                name: tc.function.name,
-                arguments: (() => {
-                  try {
-                    return JSON.parse(tc.function.arguments) as unknown;
-                  } catch {
-                    return tc.function.arguments;
-                  }
-                })(),
-              },
-            })),
-          },
-        ];
+        out.push({
+          role: "assistant",
+          content: m.content ?? "",
+          tool_calls: m.tool_calls.map((tc) => ({
+            function: {
+              name: tc.function.name,
+              arguments: (() => {
+                try {
+                  return JSON.parse(tc.function.arguments) as unknown;
+                } catch {
+                  return tc.function.arguments;
+                }
+              })(),
+            },
+          })),
+        });
+        continue;
       }
-      return [{ role: m.role, content: m.content ?? "" }];
-    });
+      out.push({ role: m.role, content: m.content ?? "" });
+    }
+    return out;
   }
 
   private async ollamaChat(params: ChatParams): Promise<ChatResponse> {
@@ -193,12 +195,12 @@ export class LLMClient {
     // Pass tools natively — Ollama /api/chat supports the OpenAI tools param
     // for all tool-capable models (qwen3 all sizes, llama3.1+, mistral3+, etc.)
     if (params.tools?.length) {
-      body["tools"] = params.tools;
+      body.tools = params.tools;
     }
 
     // json_mode only when no tools — they conflict
     if (params.json_mode && !params.tools?.length) {
-      body["format"] = "json";
+      body.format = "json";
     }
 
     const res = await fetch(`${this.ollamaBase()}/api/chat`, {
@@ -354,8 +356,8 @@ export class LLMClient {
     };
 
     if (params.tools?.length) {
-      body["tools"] = params.tools;
-      body["tool_choice"] = params.tool_choice ?? "auto";
+      body.tools = params.tools;
+      body.tool_choice = params.tool_choice ?? "auto";
     }
 
     const res = await fetch(`${this.baseUrl()}/chat/completions`, {
@@ -445,19 +447,15 @@ export class LLMClient {
 
   private async ollamaEmbed(text: string): Promise<number[]> {
     const base = (this.cfg.base_url ?? "http://localhost:11434").replace(/\/$/, "");
-    // /api/embed is the current endpoint (/api/embeddings is deprecated since Ollama 0.2)
-    const res = await fetch(`${base}/api/embed`, {
+    const res = await fetch(`${base}/api/embeddings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: this.cfg.model, input: text }),
+      body: JSON.stringify({ model: this.cfg.model, prompt: text }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error(`Ollama embed ${res.status}: ${await res.text().catch(() => "")}`);
-    const data = (await res.json()) as { embeddings?: number[][]; embedding?: number[] };
-    // /api/embed returns { embeddings: [[...]] }; old endpoint returned { embedding: [...] }
-    const vec = data.embeddings?.[0] ?? data.embedding;
-    if (!vec?.length) throw new Error("Ollama embed: empty vector returned");
-    return vec;
+    if (!res.ok) throw new Error(`Ollama embed ${res.status}`);
+    const data = (await res.json()) as { embedding: number[] };
+    return data.embedding;
   }
 
   // ── Gemini ────────────────────────────────────────────────
@@ -538,7 +536,7 @@ export class LLMClient {
     };
 
     if (params.tools?.length) {
-      body["tools"] = [
+      body.tools = [
         {
           functionDeclarations: params.tools.map((t) => ({
             name: t.function.name,
@@ -547,7 +545,7 @@ export class LLMClient {
           })),
         },
       ];
-      body["toolConfig"] = { functionCallingConfig: { mode: "AUTO" } };
+      body.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
     }
 
     const res = await fetch(this.geminiEndpoint(), {
@@ -563,12 +561,12 @@ export class LLMClient {
     }
 
     const data = (await res.json()) as Record<string, unknown>;
-    const cands = data["candidates"] as Array<Record<string, unknown>> | undefined;
+    const cands = data.candidates as Array<Record<string, unknown>> | undefined;
     const parts =
-      ((cands?.[0]?.["content"] as Record<string, unknown> | undefined)?.["parts"] as
+      ((cands?.[0]?.content as Record<string, unknown> | undefined)?.parts as
         | Array<Record<string, unknown>>
         | undefined) ?? [];
-    const usage = data["usageMetadata"] as { promptTokenCount: number; candidatesTokenCount: number } | undefined;
+    const usage = data.usageMetadata as { promptTokenCount: number; candidatesTokenCount: number } | undefined;
 
     const usageOut = usage
       ? {
@@ -579,7 +577,7 @@ export class LLMClient {
       : undefined;
 
     // functionCall parts → OpenAI tool_calls
-    const fnCalls = parts.filter((p) => p["functionCall"]);
+    const fnCalls = parts.filter((p) => p.functionCall);
     if (fnCalls.length) {
       return {
         id: `gemini-${Date.now()}`,
@@ -594,8 +592,8 @@ export class LLMClient {
                 id: `call_${Date.now()}_${i}`,
                 type: "function" as const,
                 function: {
-                  name: String((p["functionCall"] as Record<string, unknown>)["name"]),
-                  arguments: JSON.stringify((p["functionCall"] as Record<string, unknown>)["args"] ?? {}),
+                  name: String((p.functionCall as Record<string, unknown>).name),
+                  arguments: JSON.stringify((p.functionCall as Record<string, unknown>).args ?? {}),
                 },
               })),
             },
@@ -606,8 +604,8 @@ export class LLMClient {
     }
 
     const text = parts
-      .filter((p) => p["text"])
-      .map((p) => String(p["text"]))
+      .filter((p) => p.text)
+      .map((p) => String(p.text))
       .join("");
     return {
       id: `gemini-${Date.now()}`,
@@ -656,7 +654,7 @@ export class LLMClient {
             if (text) yield text;
           } catch (e) {
             if (trimmed.startsWith("{") && !trimmed.endsWith("}")) {
-              buf = trimmed + "\n";
+              buf = `${trimmed}\n`;
             } else {
               console.warn(`[llm] Gemini stream parse warning: ${String(e).slice(0, 60)}`);
             }

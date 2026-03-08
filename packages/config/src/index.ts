@@ -155,8 +155,9 @@ export type ConfigPatch = Partial<{
 function interpolate(raw: string): string {
   return raw.replace(/\$\{([^}]+)\}/g, (_, expr: string) => {
     const [varName, ...rest] = expr.split(":-");
+    if (!varName) return "";
     const fallback = rest.join(":-");
-    return process.env[varName!] ?? fallback ?? "";
+    return process.env[varName] ?? fallback ?? "";
   });
 }
 
