@@ -77,6 +77,19 @@ curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
   -d '{"content":"What is the current system load?","stream":true}'
 ```
 
+Run a task in a specific folder (explicit `working_dir`):
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content":"Create a Bun + Hono todo app with SQLite and tests in this directory.",
+    "working_dir":"/absolute/path/where/code-should-be-generated",
+    "stream":true
+  }'
+```
+
 More examples: `Docs/EXAMPLES.md`.
 
 ## Repository Layout

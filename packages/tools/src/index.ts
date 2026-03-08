@@ -276,6 +276,21 @@ async function probeRuntime(binary: string): Promise<boolean> {
   }
 }
 
+async function hasImage(runtime: "docker" | "podman" | "nerdctl", image: string): Promise<boolean> {
+  try {
+    let proc: ReturnType<typeof Bun.spawn>;
+    if (runtime === "podman") {
+      proc = Bun.spawn([runtime, "image", "exists", image], { stdout: "pipe", stderr: "pipe" });
+    } else {
+      proc = Bun.spawn([runtime, "image", "inspect", image], { stdout: "pipe", stderr: "pipe" });
+    }
+    await proc.exited;
+    return proc.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolve the sandbox strategy from config.
  * Called once at SandboxExecutor construction; result is immutable.
@@ -286,7 +301,24 @@ async function resolveStrategy(cfg: SandboxConfig): Promise<SandboxStrategyResol
   // Explicit runtime requested — probe it, error if not available
   if (runtime !== "auto" && runtime !== "direct") {
     const ok = await probeRuntime(runtime);
-    if (ok) return { kind: "container", runtime, image, network };
+    if (ok) {
+      const imageReady = await hasImage(runtime, image);
+      if (imageReady) return { kind: "container", runtime, image, network };
+      if (allow_direct_fallback) {
+        return {
+          kind: "direct",
+          warning:
+            `Container runtime ${runtime} is available but image "${image}" is missing. ` +
+            `Falling back to direct host execution. Build image first for full isolation.`,
+        };
+      }
+      return {
+        kind: "refused",
+        reason:
+          `Container runtime ${runtime} is available but image "${image}" is missing. ` +
+          `Build it (docker/podman build -t ${image} docker/sandbox) or enable sandbox.allow_direct_fallback.`,
+      };
+    }
     return {
       kind: "refused",
       reason:
@@ -306,7 +338,26 @@ async function resolveStrategy(cfg: SandboxConfig): Promise<SandboxStrategyResol
   // Auto — probe in order of preference
   for (const rt of ["docker", "podman", "nerdctl"] as const) {
     if (await probeRuntime(rt)) {
-      return { kind: "container", runtime: rt, image, network };
+      const imageReady = await hasImage(rt, image);
+      if (imageReady) {
+        return { kind: "container", runtime: rt, image, network };
+      }
+
+      if (allow_direct_fallback) {
+        return {
+          kind: "direct",
+          warning:
+            `Found ${rt}, but image "${image}" is missing. ` +
+            "Falling back to direct host execution. Build the sandbox image to re-enable container isolation.",
+        };
+      }
+
+      return {
+        kind: "refused",
+        reason:
+          `Found ${rt}, but image "${image}" is missing and direct fallback is disabled. ` +
+          `Build it (docker/podman build -t ${image} docker/sandbox).`,
+      };
     }
   }
 

@@ -54,7 +54,6 @@ export interface AgentRunResult {
 // ── Orchestrator prompt — fires once, picks one agent ─────────
 
 function buildOrchestratorPrompt(bb: Blackboard, mode: string): string {
-  const _agents = ["engineer", "analyst", "responder"];
   return `You are a router. Pick ONE agent for this task. Reply with ONLY valid JSON.
 
 Mode: ${mode}
@@ -66,6 +65,7 @@ Agents:
 - responder: answers directly from knowledge (no tools needed)
 
 For "what is system load", "check disk space", "list processes" → engineer (uses run_shell)
+For weather, URLs, and online lookups → analyst (uses web_fetch)
 For "summarise", "search", "fetch URL" → analyst
 For simple questions with no tool needed → responder
 
@@ -409,11 +409,12 @@ export class SessionProcessor {
 
   async handleMessage(params: OrchestratorParams): Promise<AgentRunResult> {
     const { session_id, blackboard, user_message, history, working_dir, mode, signal } = params;
+    const runtimeCfg = this.runtimeConfig(mode);
 
     if (signal?.aborted) return { reply: "", blackboard, stopped_reason: "cancelled" };
 
-    const orchAlias = this.cfg.orchestrator.model;
-    const orchCfg = this.cfg.models[orchAlias];
+    const orchAlias = runtimeCfg.orchestrator.model;
+    const orchCfg = runtimeCfg.models[orchAlias];
     if (!orchCfg) throw new Error(`Orchestrator model alias not found: ${orchAlias}`);
 
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
@@ -457,7 +458,7 @@ export class SessionProcessor {
     blackboard.appendDecision(1, decision.action, decision.target ?? "", decision.reason ?? "");
 
     const targetName = decision.target ?? "engineer";
-    const agentDef = this.cfg.agents[targetName];
+    const agentDef = runtimeCfg.agents[targetName];
 
     if (!agentDef) {
       log.warn(`Agent "${targetName}" not defined — falling back to responder`);
@@ -465,7 +466,7 @@ export class SessionProcessor {
     }
 
     // ── Step 2: run the chosen agent ──────────────────────────
-    const runner = new AgentRunner(targetName, this.cfg, this.registry, this.memory, this.db);
+    const runner = new AgentRunner(targetName, runtimeCfg, this.registry, this.memory, this.db);
     let agentResult: Awaited<ReturnType<typeof runner.run>>;
 
     try {
@@ -493,7 +494,7 @@ export class SessionProcessor {
     // ── Step 3: responder synthesises — no orchestrator re-eval ──
     // This is the key fix: we NEVER give the orchestrator a second turn.
     // After engineer/analyst succeeds, responder always runs next.
-    const respDef = this.cfg.agents.responder;
+    const respDef = runtimeCfg.agents.responder;
     if (!respDef) {
       return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
     }
@@ -505,7 +506,7 @@ export class SessionProcessor {
       payload: { round: 2, action: "reply", target: "responder" },
     });
 
-    const respRunner = new AgentRunner("responder", this.cfg, this.registry, this.memory, this.db);
+    const respRunner = new AgentRunner("responder", runtimeCfg, this.registry, this.memory, this.db);
     let respResult: Awaited<ReturnType<typeof respRunner.run>>;
 
     try {
@@ -523,5 +524,37 @@ export class SessionProcessor {
       blackboard,
       stopped_reason: "done",
     };
+  }
+
+  private runtimeConfig(mode: string): Config {
+    if (mode === "local") return this.cfg;
+
+    const clone: Config = {
+      ...this.cfg,
+      orchestrator: { ...this.cfg.orchestrator },
+      agents: Object.fromEntries(
+        Object.entries(this.cfg.agents).map(([name, agent]) => [name, { ...agent }]),
+      ) as Config["agents"],
+    };
+
+    const has = (alias: string) => Boolean(clone.models[alias]);
+
+    if (mode === "balanced") {
+      if (has("local")) clone.orchestrator.model = "local";
+      if (has("smart") && clone.agents.analyst) clone.agents.analyst.model = "smart";
+      if (has("smart") && clone.agents.engineer) clone.agents.engineer.model = "smart";
+      if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
+      return clone;
+    }
+
+    if (mode === "cloud") {
+      if (has("smart")) clone.orchestrator.model = "smart";
+      if (has("smart") && clone.agents.analyst) clone.agents.analyst.model = "smart";
+      if (has("smart") && clone.agents.engineer) clone.agents.engineer.model = "smart";
+      if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
+      return clone;
+    }
+
+    return this.cfg;
   }
 }

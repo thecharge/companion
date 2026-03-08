@@ -50,6 +50,7 @@ export function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [caps, setCaps] = useState<Caps | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
+  const [workingDir, setWorkingDir] = useState(process.cwd());
 
   const wsRef = useRef<WebSocket | null>(null);
   const abortCtrlRef = useRef<AbortController | null>(null);
@@ -139,7 +140,9 @@ export function App() {
               break;
             case "tool_start":
               setTask((prev) =>
-                prev ? { ...prev, tool: String(payload["tool"] ?? ""), status: TaskStatus.RunningTool } : null,
+                prev
+                  ? { ...prev, tool: String(payload["tool"] ?? ""), status: TaskStatus.RunningTool }
+                  : null,
               );
               addLog(`tool ${String(payload["tool"] ?? "")}`);
               break;
@@ -262,7 +265,7 @@ export function App() {
         const res = await fetch(`${SERVER}/sessions/${active.id}/messages`, {
           method: "POST",
           headers: REQUEST_HEADERS,
-          body: JSON.stringify({ content, stream: true }),
+          body: JSON.stringify({ content, working_dir: workingDir, stream: true }),
           signal: ctrl.signal,
         });
 
@@ -312,7 +315,7 @@ export function App() {
         setStreaming(false);
       }
     },
-    [active, addLog, streaming],
+    [active, addLog, streaming, workingDir],
   );
 
   const paneOrder: Pane[] = [Pane.Sessions, Pane.Chat, Pane.Capabilities];
@@ -355,7 +358,7 @@ export function App() {
         <Text bold color="cyan">
           Companion (by Radoslav Sandov)
         </Text>
-        <Text color="gray">Tab switch / type up/down scroll q quit</Text>
+        <Text color="gray">Tab switch / type up/down scroll /wd &lt;path&gt; q quit</Text>
         {statusMsg && <Text color="red"> {statusMsg}</Text>}
       </Box>
 
@@ -366,8 +369,6 @@ export function App() {
           active={pane === Pane.Sessions}
           onSelect={(i) => {
             setIdx(i);
-            const selected = sessions[i];
-            if (selected) void openSession(selected);
           }}
         />
 
@@ -376,10 +377,25 @@ export function App() {
           messages={messages}
           task={task}
           actionLog={actionLog}
+          workingDir={workingDir}
           streaming={streaming}
           active={pane === Pane.Chat}
           wsConnected={wsConnected}
-          onSend={(text) => void sendMessage(text)}
+          onSend={(text) => {
+            if (text === "/wd") {
+              addLog(`working_dir ${workingDir}`);
+              return;
+            }
+            if (text.startsWith("/wd ")) {
+              const next = text.slice(4).trim();
+              if (next) {
+                setWorkingDir(next);
+                addLog(`working_dir set ${next}`);
+              }
+              return;
+            }
+            void sendMessage(text);
+          }}
           onModeChange={(mode) => void changeMode(mode)}
           onAbort={abortStream}
         />

@@ -17,7 +17,7 @@ Ask system load:
 curl -s -X POST "http://localhost:3000/sessions/$SESSION_ID/messages" \
   -H "Authorization: Bearer dev-secret" \
   -H "Content-Type: application/json" \
-  -d '{"content":"What is the current system load?"}'
+  -d '{"content":"What is the current system load?","working_dir":"/tmp"}'
 ```
 
 Ask weather (requires enabled weather/web tool in your profile):
@@ -26,7 +26,7 @@ Ask weather (requires enabled weather/web tool in your profile):
 curl -s -X POST "http://localhost:3000/sessions/$SESSION_ID/messages" \
   -H "Authorization: Bearer dev-secret" \
   -H "Content-Type: application/json" \
-  -d '{"content":"What is the weather in Sofia right now?"}'
+  -d '{"content":"What is the weather in Sofia right now?","working_dir":"/tmp"}'
 ```
 
 ## 2) Operate With Tools and Skills
@@ -56,6 +56,17 @@ Guardrails to require:
 - explicit target path
 - no destructive commands outside target
 - generated README with run/test instructions
+
+API example with explicit target folder:
+
+```bash
+TARGET="/absolute/path/to/new-project"
+
+curl -s -X POST "http://localhost:3000/sessions/$SESSION_ID/messages" \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\":\"Create a Bun + Hono todo app with SQLite and tests in this folder.\",\"working_dir\":\"$TARGET\",\"stream\":true}"
+```
 
 ## 4) Extensibility for End Users
 

@@ -179,6 +179,26 @@ const E401 = () => Response.json({ error: "Unauthorized" }, { status: 401 });
 const E404 = () => Response.json({ error: "Not found" }, { status: 404 });
 const E400 = (msg: string) => Response.json({ error: msg }, { status: 400 });
 
+async function storeMessageMemory(
+  sid: SessionId,
+  text: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  if (!embedAvailable || !text.trim()) return;
+
+  const chunks = memory.chunkText(text).slice(0, 8);
+  for (const chunk of chunks) {
+    const emb = await embedClient.embed(chunk.content);
+    await memory.store(sid, `${Date.now().toString(36)}-${chunk.pageNum}`, chunk.content, emb, {
+      ...metadata,
+      page: chunk.pageNum,
+      total_pages: chunk.totalPages,
+      char_start: chunk.charStart,
+      char_end: chunk.charEnd,
+    });
+  }
+}
+
 async function processMessage(
   sid: SessionId,
   session: Awaited<ReturnType<typeof db.sessions.get>>,
@@ -200,6 +220,7 @@ async function processMessage(
     name: msg.name,
   }));
 
+  let recallTexts: string[] = [];
   if (embedAvailable) {
     try {
       const recallQuery = [content, bb.goal, bb.read("observations").slice(-1)[0] ?? ""]
@@ -207,11 +228,15 @@ async function processMessage(
         .join(" ")
         .slice(0, 500);
       const queryEmbed = await embedClient.embed(recallQuery);
-      await memory.recall(sid, queryEmbed);
+      recallTexts = await memory.recall(sid, queryEmbed);
     } catch (error) {
       log.warn("Recall failed", error);
     }
   }
+
+  const enrichedUserMessage = recallTexts.length
+    ? `${content}\n\n[Relevant memories]\n${recallTexts.map((x, i) => `${i + 1}. ${x}`).join("\n")}`
+    : content;
 
   const processor = new SessionProcessor(sessionCfg, registry, memory, db);
 
@@ -219,7 +244,7 @@ async function processMessage(
     const result = await processor.handleMessage({
       session_id: sid,
       blackboard: bb,
-      user_message: content,
+      user_message: enrichedUserMessage,
       history: historyMsgs,
       working_dir: workingDir,
       mode: session.mode,
@@ -233,6 +258,11 @@ async function processMessage(
       content: result.reply,
     });
     await db.sessions.incrementMessageCount(sid);
+
+    await storeMessageMemory(sid, content, { role: "user" }).catch((error) => log.warn("Store user memory failed", error));
+    await storeMessageMemory(sid, result.reply, { role: "assistant" }).catch((error) =>
+      log.warn("Store assistant memory failed", error),
+    );
 
     try {
       await db.sessions.update(sid, {
@@ -265,8 +295,18 @@ async function processMessage(
 async function maybeSummarise(sid: SessionId, sessionCfg: typeof cfg): Promise<void> {
   if (!sessionCfg.memory.summarisation.enabled) return;
   const summaryAlias = sessionCfg.memory.summarisation.model;
-  const summaryCfg = sessionCfg.models[summaryAlias];
+  let summaryCfg = sessionCfg.models[summaryAlias];
+
   if (!summaryCfg) return;
+  if ((summaryCfg.provider === "anthropic" || summaryCfg.provider === "openai" || summaryCfg.provider === "gemini") &&
+      !summaryCfg.api_key) {
+    const localFallback = sessionCfg.models.local;
+    if (localFallback) {
+      summaryCfg = localFallback;
+    } else {
+      return;
+    }
+  }
 
   const msgs = await db.messages.list(sid, { limit: 50 });
   const llm = createLLMClient(summaryCfg);
