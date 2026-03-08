@@ -60,6 +60,12 @@
 - Orchestrator prompt now derives agent capabilities from configured agent definitions + tool schemas.
 - Added `skills/skill-of-skills/skill.yaml` and exposed `skill_of_skills` in analyst tools so skill selection can be handled by skills, not hardcoded code paths.
 
+8. Self-improvement loop restored (proposal -> confirmation -> creation).
+- Added skill-acquisition reasoning loop in `packages/agents/src/index.ts`.
+- Added skill scaffold writer helper in `packages/agents/src/skill-acquisition.ts` (decomposes agent file responsibilities).
+- Added `skills/skill-factory/skill.yaml` with `create_skill_template` tool.
+- Engineers can now scaffold a new skill, and orchestrator can ask for explicit user confirmation before creating one.
+
 ## Remaining Gaps Before Claiming Enterprise Grade
 
 1. Formal threat model and secure SDLC process.

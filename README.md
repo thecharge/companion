@@ -18,6 +18,8 @@ The codebase is functional but still evolving. This repository now includes a co
 - Security baseline: `Docs/SECURITY.md`
 - Extensibility and pipelines: `Docs/EXTENSIBILITY_GUIDE.md`
 - Real usage examples: `Docs/EXAMPLES.md`
+- Usage guide: `Docs/USAGE_GUIDE.md`
+- Development guide: `Docs/DEVELOPMENT_GUIDE.md`
 
 ## Prerequisites
 
@@ -53,6 +55,11 @@ Configured in `companion.yaml`:
 - `local`: fully local model routing
 - `balanced`: mixed local/cloud
 - `cloud`: cloud-first for maximum capability
+
+Mode behavior is policy-based, not provider-biased:
+- `local` uses local aliases only.
+- `balanced` uses hybrid alias remapping (local + cloud where configured).
+- `cloud` prefers cloud aliases and falls back only when missing config.
 
 Set default mode under:
 
@@ -95,6 +102,20 @@ curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
 ```
 
 More examples: `Docs/EXAMPLES.md`.
+
+## Self-Improvement Loop
+
+Companion can now propose acquiring a new skill when it detects repeated missing capability.
+
+Flow:
+1. Orchestrator evaluates whether existing registered tools/skills can solve the task.
+2. If not, it asks for confirmation to acquire a new skill.
+3. On `yes`, Companion scaffolds `skills/<new-skill>/skill.yaml`.
+4. On `no`, proposal is cancelled and normal execution continues.
+
+Skill tooling included:
+- `skill_of_skills`: recommends matching skills for a task.
+- `create_skill_template`: scaffolds a new skill from parameters.
 
 ## Repository Layout
 

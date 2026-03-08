@@ -19,9 +19,9 @@ vector:
     model:      nomic-embed-text
     dimensions: 768
 
-# No API keys required for the "local" alias — uses Ollama.
-# The server checks Ollama health on startup and logs which models are available.
-# To run fully local (no cloud keys): set all agent models to "local" below.
+# Define both local and cloud-capable model aliases.
+# Runtime mode selects how these aliases are used (`local`, `balanced`, `cloud`).
+# The server verifies provider/model readiness at startup.
 models:
   local:
     provider:    ollama
@@ -51,13 +51,13 @@ models:
     temperature: 0.1
 
 orchestrator:
-  model:          local           # any alias — swap to "smart" for complex tasks
+  model:          local           # mode overrides this at runtime in balanced/cloud
   max_rounds:     3               # was 10 — lower prevents runaway loops
   verify_results: false           # disabled: same 3B model verifying itself is noise
 
 agents:
   analyst:
-    model:       local             # set to "smart" when ANTHROPIC_API_KEY is configured
+    model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Reads and analyses documents, code, and data. Produces structured observations."
     tools:       [read_file, search_history, search_memory, web_fetch, skill_of_skills]
     reads_from:  [goal, observations]
@@ -65,15 +65,15 @@ agents:
     max_turns:   6
 
   engineer:
-    model:       local             # set to "smart" for complex code tasks with API key
+    model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
-    tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history]
+    tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history, create_skill_template]
     reads_from:  [goal, observations, artifacts]
     writes_to:   [artifacts, observations]
     max_turns:   12
 
   responder:
-    model:       local             # set to "fast" when ANTHROPIC_API_KEY is configured
+    model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Synthesises agent outputs into a clear, concise reply to the user."
     tools:       []
     reads_from:  [goal, observations, artifacts, decisions]
@@ -97,12 +97,12 @@ memory:
     model:            fast
 
 mode:
-  default: local
+  default: balanced
   presets:
     local:
       description: "Local model only — fast, free, private"
     balanced:
-      description: "Local orchestrator + cloud agents for heavy tasks"
+      description: "Hybrid routing: local + cloud aliases according to runtime policy"
     cloud:
       description: "Cloud orchestrator and agents — maximum capability"
 

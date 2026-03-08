@@ -31,6 +31,15 @@ import {
 } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import type { ToolContext, ToolRegistry } from "@companion/tools";
+import {
+  PENDING_SKILL_KEY,
+  type ProposedSkillSpec,
+  buildSkillAcquisitionPrompt,
+  createSkillFromProposal,
+  isAffirmative,
+  isNegative,
+  normalizeSkillSpec,
+} from "./skill-acquisition";
 
 const log = new Logger("agents");
 
@@ -432,6 +441,30 @@ export class SessionProcessor {
     const orchCfg = runtimeCfg.models[orchAlias];
     if (!orchCfg) throw new Error(`Orchestrator model alias not found: ${orchAlias}`);
 
+    const pendingHandled = await this.handlePendingSkillProposal(blackboard, user_message);
+    if (pendingHandled) {
+      return {
+        reply: pendingHandled,
+        blackboard,
+        stopped_reason: "done",
+      };
+    }
+
+    const proposalReply = await this.maybeProposeSkillAcquisition(
+      runtimeCfg,
+      orchCfg,
+      blackboard,
+      user_message,
+      signal,
+    );
+    if (proposalReply) {
+      return {
+        reply: proposalReply,
+        blackboard,
+        stopped_reason: "done",
+      };
+    }
+
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
     // ── Step 1: orchestrator picks one configured agent ─────────────────────
@@ -544,6 +577,86 @@ export class SessionProcessor {
       blackboard,
       stopped_reason: "done",
     };
+  }
+
+  private async handlePendingSkillProposal(blackboard: Blackboard, userMessage: string): Promise<string | null> {
+    const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
+    const pendingRaw = scratch[PENDING_SKILL_KEY];
+    if (!pendingRaw || typeof pendingRaw !== "object") return null;
+
+    const pending = normalizeSkillSpec(pendingRaw as Partial<ProposedSkillSpec>);
+
+    if (isAffirmative(userMessage)) {
+      try {
+        const created = await createSkillFromProposal(pending);
+        blackboard.setScratchpad(PENDING_SKILL_KEY, null);
+        blackboard.appendObservation(`Created skill ${created.spec.name} at ${created.path}`);
+        return `Created skill \"${created.spec.name}\" with tool \"${created.spec.tool_name}\" at ${created.path}. It will be loaded on next server start.`;
+      } catch (error) {
+        blackboard.setScratchpad(PENDING_SKILL_KEY, null);
+        return `Skill creation failed: ${String(error)}`;
+      }
+    }
+
+    if (isNegative(userMessage)) {
+      blackboard.setScratchpad(PENDING_SKILL_KEY, null);
+      return "Understood. I cancelled that proposed skill acquisition.";
+    }
+
+    return `Pending skill proposal: \"${pending.name}\" (${pending.description}). Reply with 'yes' to create it or 'no' to cancel.`;
+  }
+
+  private async maybeProposeSkillAcquisition(
+    runtimeCfg: Config,
+    orchCfg: Config["models"][string],
+    blackboard: Blackboard,
+    userMessage: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
+    if (scratch[PENDING_SKILL_KEY]) return null;
+
+    const toolNames = this.registry.list().map((tool) => tool.function.name);
+    const orchLLM = createLLMClient(orchCfg);
+
+    try {
+      const res = await orchLLM.chat({
+        messages: [
+          {
+            role: "system",
+            content: buildSkillAcquisitionPrompt(userMessage, toolNames),
+          },
+          {
+            role: "user",
+            content: `Mode: ${runtimeCfg.mode.default}. Decide if a reusable new skill should be acquired for this request.`,
+          },
+        ],
+        json_mode: orchCfg.provider === "ollama",
+        signal,
+      });
+
+      const raw = res.choices[0]?.message.content ?? "";
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      const parsed = JSON.parse(cleaned) as { should_acquire?: boolean } & Partial<ProposedSkillSpec>;
+      if (!parsed.should_acquire) return null;
+
+      const proposal = normalizeSkillSpec(parsed);
+      blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
+      blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
+
+      return [
+        `I detected a reusable capability gap and propose a new skill: \"${proposal.name}\".`,
+        `Reason: ${proposal.why}`,
+        `Planned tool: ${proposal.tool_name}`,
+        "Reply 'yes' to create it now, or 'no' to continue without creating it.",
+      ].join("\n");
+    } catch {
+      return null;
+    }
   }
 
   private runtimeConfig(mode: string): Config {
