@@ -1,0 +1,57 @@
+name: skill-of-skills
+version: "1.0.0"
+description: "Meta-skill that recommends which loaded skills/tools best match a task."
+tags: [skills, routing, planning]
+
+tools:
+  - name: skill_of_skills
+    description: "Suggest relevant skills for a user request based on loaded skill metadata."
+    parameters:
+      query:
+        type: string
+        description: "User request or task description"
+        required: true
+    timeout: 10
+    script: |
+      set -eu
+      QUERY="${COMPANION_ARG_QUERY:-}"
+      BASE="${WORKING_DIR:-.}/skills"
+
+      if [ ! -d "$BASE" ]; then
+        echo "No skills directory found at $BASE"
+        exit 0
+      fi
+
+      QUERY_LC=$(printf '%s' "$QUERY" | tr '[:upper:]' '[:lower:]')
+      TOKENS=$(printf '%s' "$QUERY_LC" | tr -cs '[:alnum:]' '\n' | awk 'length($0) > 2')
+
+      found=0
+      for file in "$BASE"/*/skill.yaml; do
+        [ -f "$file" ] || continue
+        found=1
+
+        NAME=$(awk -F': *' '/^name:/{print $2; exit}' "$file" | tr -d '"')
+        DESC=$(awk -F': *' '/^description:/{print $2; exit}' "$file" | tr -d '"')
+        TAGS=$(awk '/^tags:/{print $0; exit}' "$file" | tr -d '[]"')
+        TOOLS=$(awk '/^- name:/{print $3}' "$file" | tr '\n' ',' | sed 's/,$//')
+
+        HAYSTACK=$(printf '%s %s %s %s' "$NAME" "$DESC" "$TAGS" "$TOOLS" | tr '[:upper:]' '[:lower:]')
+        SCORE=0
+        for token in $TOKENS; do
+          case "$HAYSTACK" in
+            *"$token"*) SCORE=$((SCORE + 1)) ;;
+          esac
+        done
+
+        printf '%03d\t%s\t%s\t%s\n' "$SCORE" "$NAME" "$DESC" "$TOOLS"
+      done | sort -r | awk -F '\t' '
+        BEGIN { print "Top matching skills:" }
+        {
+          if (NR > 5) next;
+          printf "%d. %s — %s (tools: %s, score: %d)\n", NR, $2, $3, $4, $1 + 0;
+        }
+      '
+
+      if [ "$found" -eq 0 ]; then
+        echo "No skill.yaml files found under $BASE"
+      fi

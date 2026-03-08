@@ -53,26 +53,41 @@ export interface AgentRunResult {
 
 // ── Orchestrator prompt — fires once, picks one agent ─────────
 
-function buildOrchestratorPrompt(bb: Blackboard, mode: string): string {
-  return `You are a router. Pick ONE agent for this task. Reply with ONLY valid JSON.
+function buildOrchestratorPrompt(cfg: Config, registry: ToolRegistry, bb: Blackboard, mode: string): string {
+  const agents = Object.entries(cfg.agents).map(([name, agent]) => {
+    const toolList = agent.tools.length
+      ? agent.tools
+          .map((toolName) => {
+            const schema = registry.get(toolName)?.schema;
+            const desc = schema?.function.description ?? "no description";
+            return `${toolName} (${desc})`;
+          })
+          .join(", ")
+      : "none";
+
+    return `- ${name}: ${agent.description}\n  model_alias: ${agent.model}\n  tools: ${toolList}`;
+  });
+
+  const targets = Object.keys(cfg.agents)
+    .map((name) => `{"action":"run_agent","target":"${name}","reason":"one line"}`)
+    .join("\n");
+
+  return `You are a router. Pick ONE configured agent for this task. Reply with ONLY valid JSON.
 
 Mode: ${mode}
 Goal: ${bb.goal || "not set"}
 
-Agents:
-- engineer: writes code, runs shell commands, reads/writes files
-- analyst: reads documents, searches history, fetches URLs
-- responder: answers directly from knowledge (no tools needed)
+Configured agents:
+${agents.join("\n")}
 
-For "what is system load", "check disk space", "list processes" → engineer (uses run_shell)
-For weather, URLs, and online lookups → analyst (uses web_fetch)
-For "summarise", "search", "fetch URL" → analyst
-For simple questions with no tool needed → responder
+Routing rules:
+- Use the configured agent definitions above; do not invent capabilities.
+- Choose the agent whose declared tools are best aligned with the request.
+- Prefer dedicated data tools over generic shell commands when both exist.
+- If no tool use is needed, choose the best direct-response agent.
 
 Reply ONLY with one of:
-{"action":"run_agent","target":"engineer","reason":"one line"}
-{"action":"run_agent","target":"analyst","reason":"one line"}
-{"action":"run_agent","target":"responder","reason":"one line"}`;
+${targets}`;
 }
 
 // ── AgentRunner ───────────────────────────────────────────────
@@ -419,14 +434,13 @@ export class SessionProcessor {
 
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
-    // ── Step 1: orchestrator picks ONE agent ──────────────────
-    const orchLLM = createLLMClient(orchCfg);
+    // ── Step 1: orchestrator picks one configured agent ─────────────────────
     let decision: { action: string; target?: string; reason?: string };
-
+    const orchLLM = createLLMClient(orchCfg);
     try {
       const res = await orchLLM.chat({
         messages: [
-          { role: "system", content: buildOrchestratorPrompt(blackboard, mode) },
+          { role: "system", content: buildOrchestratorPrompt(runtimeCfg, this.registry, blackboard, mode) },
           { role: "user", content: user_message },
         ],
         json_mode: orchCfg.provider === "ollama",
@@ -440,12 +454,15 @@ export class SessionProcessor {
       try {
         decision = JSON.parse(cleaned) as typeof decision;
       } catch {
-        log.warn("Orchestrator non-JSON — defaulting to engineer", { raw: raw.slice(0, 80) });
-        decision = { action: "run_agent", target: "engineer", reason: "parse fallback" };
+        log.warn("Orchestrator non-JSON — defaulting to first configured agent", { raw: raw.slice(0, 80) });
+        const fallback = Object.keys(runtimeCfg.agents)[0] ?? "responder";
+        decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
       }
     } catch (e) {
       const msg = String(e);
-      if (signal?.aborted || msg.includes("AbortError")) return { reply: "", blackboard, stopped_reason: "cancelled" };
+      if (signal?.aborted || msg.includes("AbortError")) {
+        return { reply: "", blackboard, stopped_reason: "cancelled" };
+      }
       throw e;
     }
 
@@ -457,12 +474,15 @@ export class SessionProcessor {
     });
     blackboard.appendDecision(1, decision.action, decision.target ?? "", decision.reason ?? "");
 
-    const targetName = decision.target ?? "engineer";
-    const agentDef = runtimeCfg.agents[targetName];
+    const preferredTarget = decision.target ?? "responder";
+    const targetName = runtimeCfg.agents[preferredTarget]
+      ? preferredTarget
+      : (Object.keys(runtimeCfg.agents).find((name) => name === "responder") ??
+        Object.keys(runtimeCfg.agents)[0] ??
+        "responder");
 
-    if (!agentDef) {
-      log.warn(`Agent "${targetName}" not defined — falling back to responder`);
-      decision.target = "responder";
+    if (!runtimeCfg.agents[preferredTarget]) {
+      log.warn(`Agent "${preferredTarget}" not defined — falling back to "${targetName}"`);
     }
 
     // ── Step 2: run the chosen agent ──────────────────────────

@@ -59,7 +59,7 @@ agents:
   analyst:
     model:       local             # set to "smart" when ANTHROPIC_API_KEY is configured
     description: "Reads and analyses documents, code, and data. Produces structured observations."
-    tools:       [read_file, search_history, search_memory, web_fetch]
+    tools:       [read_file, search_history, search_memory, web_fetch, skill_of_skills]
     reads_from:  [goal, observations]
     writes_to:   [observations]
     max_turns:   6

@@ -55,6 +55,11 @@
 - Vector memory is now actually persisted and recalled through server message flow.
 - TUI now supports explicit per-session target path control via `/wd <path>` and sends `working_dir` on every request.
 
+7. Router behavior restored to definition-driven orchestration.
+- Removed hardcoded keyword regex routing from `packages/agents/src/index.ts`.
+- Orchestrator prompt now derives agent capabilities from configured agent definitions + tool schemas.
+- Added `skills/skill-of-skills/skill.yaml` and exposed `skill_of_skills` in analyst tools so skill selection can be handled by skills, not hardcoded code paths.
+
 ## Remaining Gaps Before Claiming Enterprise Grade
 
 1. Formal threat model and secure SDLC process.

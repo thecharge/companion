@@ -40,6 +40,8 @@ Current:
 - API auth secret exists
 - Sandbox execution support exists
 - Local-first architecture reduces data exposure
+- Security response headers are enabled in server responses
+- Startup checks now surface unsafe runtime posture (missing sandbox image, direct fallback)
 
 Needed:
 - Identity and RBAC (user/service principals)
@@ -47,6 +49,25 @@ Needed:
 - Immutable audit logs
 - Formalized secrets handling for production
 - Centralized policy-as-code checks in CI
+
+## Production Enforcement Gates (Recommended)
+
+Set these as required CI/CD and runtime controls before enterprise deployment:
+
+1. Runtime guardrails
+- `COMPANION_SECRET` must not use development default in production.
+- `sandbox.allow_direct_fallback` must be `false` in production environments.
+- `sandbox.runtime` must be pinned (`docker` or `podman`) in production.
+
+2. Build and release controls
+- Signed release artifacts and image digests.
+- SBOM generation for every release build.
+- Dependency vulnerability scan with fail-on-high/critical.
+
+3. Operational controls
+- Centralized structured logs with retention policy.
+- Access review and rotation evidence for secrets.
+- Documented incident response runbook and on-call ownership.
 
 ## Evidence You Will Need
 

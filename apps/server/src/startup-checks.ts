@@ -20,6 +20,19 @@ export async function runStartupChecks(params: {
   embedModelName: string;
 }): Promise<void> {
   const { cfg, sandbox, embedBase, embedModelName } = params;
+  const isProd = process.env.NODE_ENV === "production";
+
+  if (isProd) {
+    if (!cfg.server.secret || cfg.server.secret === "dev-secret") {
+      log.warn("Production warning: server.secret is unset or using dev default.");
+    }
+    if (cfg.sandbox.allow_direct_fallback) {
+      log.warn("Production warning: sandbox.allow_direct_fallback=true reduces isolation guarantees.");
+    }
+    if (cfg.sandbox.runtime === "auto" || cfg.sandbox.runtime === "direct") {
+      log.warn(`Production warning: sandbox.runtime is "${cfg.sandbox.runtime}". Pin to "docker" or "podman".`);
+    }
+  }
 
   const sandboxStrategy = await sandbox.probe();
   await sandbox.cleanupZombies().catch((e) => log.warn("Zombie cleanup error", e));
