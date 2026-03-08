@@ -49,6 +49,12 @@
 - `bun run typecheck` passes across all workspaces.
 - `bun run test` passes across all workspaces with baseline tests added for previously untested packages/apps.
 
+6. Runtime fit-for-use fixes added after real-world failures.
+- Sandbox now checks runtime image availability and falls back to direct execution when allowed, avoiding repeated podman/docker registry failures for missing local images.
+- Session mode now affects model routing (`local`, `balanced`, `cloud`) instead of only changing labels.
+- Vector memory is now actually persisted and recalled through server message flow.
+- TUI now supports explicit per-session target path control via `/wd <path>` and sends `working_dir` on every request.
+
 ## Remaining Gaps Before Claiming Enterprise Grade
 
 1. Formal threat model and secure SDLC process.

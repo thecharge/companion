@@ -278,12 +278,10 @@ async function probeRuntime(binary: string): Promise<boolean> {
 
 async function hasImage(runtime: "docker" | "podman" | "nerdctl", image: string): Promise<boolean> {
   try {
-    let proc: ReturnType<typeof Bun.spawn>;
-    if (runtime === "podman") {
-      proc = Bun.spawn([runtime, "image", "exists", image], { stdout: "pipe", stderr: "pipe" });
-    } else {
-      proc = Bun.spawn([runtime, "image", "inspect", image], { stdout: "pipe", stderr: "pipe" });
-    }
+    const proc =
+      runtime === "podman"
+        ? Bun.spawn([runtime, "image", "exists", image], { stdout: "pipe", stderr: "pipe" })
+        : Bun.spawn([runtime, "image", "inspect", image], { stdout: "pipe", stderr: "pipe" });
     await proc.exited;
     return proc.exitCode === 0;
   } catch {
@@ -307,9 +305,7 @@ async function resolveStrategy(cfg: SandboxConfig): Promise<SandboxStrategyResol
       if (allow_direct_fallback) {
         return {
           kind: "direct",
-          warning:
-            `Container runtime ${runtime} is available but image "${image}" is missing. ` +
-            `Falling back to direct host execution. Build image first for full isolation.`,
+          warning: `Container runtime ${runtime} is available but image "${image}" is missing. Falling back to direct host execution. Build image first for full isolation.`,
         };
       }
       return {
@@ -346,9 +342,7 @@ async function resolveStrategy(cfg: SandboxConfig): Promise<SandboxStrategyResol
       if (allow_direct_fallback) {
         return {
           kind: "direct",
-          warning:
-            `Found ${rt}, but image "${image}" is missing. ` +
-            "Falling back to direct host execution. Build the sandbox image to re-enable container isolation.",
+          warning: `Found ${rt}, but image "${image}" is missing. Falling back to direct host execution. Build the sandbox image to re-enable container isolation.`,
         };
       }
 

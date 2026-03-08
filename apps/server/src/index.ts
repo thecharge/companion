@@ -179,11 +179,7 @@ const E401 = () => Response.json({ error: "Unauthorized" }, { status: 401 });
 const E404 = () => Response.json({ error: "Not found" }, { status: 404 });
 const E400 = (msg: string) => Response.json({ error: msg }, { status: 400 });
 
-async function storeMessageMemory(
-  sid: SessionId,
-  text: string,
-  metadata?: Record<string, unknown>,
-): Promise<void> {
+async function storeMessageMemory(sid: SessionId, text: string, metadata?: Record<string, unknown>): Promise<void> {
   if (!embedAvailable || !text.trim()) return;
 
   const chunks = memory.chunkText(text).slice(0, 8);
@@ -259,7 +255,9 @@ async function processMessage(
     });
     await db.sessions.incrementMessageCount(sid);
 
-    await storeMessageMemory(sid, content, { role: "user" }).catch((error) => log.warn("Store user memory failed", error));
+    await storeMessageMemory(sid, content, { role: "user" }).catch((error) =>
+      log.warn("Store user memory failed", error),
+    );
     await storeMessageMemory(sid, result.reply, { role: "assistant" }).catch((error) =>
       log.warn("Store assistant memory failed", error),
     );
@@ -298,8 +296,10 @@ async function maybeSummarise(sid: SessionId, sessionCfg: typeof cfg): Promise<v
   let summaryCfg = sessionCfg.models[summaryAlias];
 
   if (!summaryCfg) return;
-  if ((summaryCfg.provider === "anthropic" || summaryCfg.provider === "openai" || summaryCfg.provider === "gemini") &&
-      !summaryCfg.api_key) {
+  if (
+    (summaryCfg.provider === "anthropic" || summaryCfg.provider === "openai" || summaryCfg.provider === "gemini") &&
+    !summaryCfg.api_key
+  ) {
     const localFallback = sessionCfg.models.local;
     if (localFallback) {
       summaryCfg = localFallback;

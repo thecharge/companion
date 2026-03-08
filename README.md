@@ -42,6 +42,10 @@ bun run server
 bun run tui
 ```
 
+TUI working directory control:
+- Type `/wd /absolute/path` in the TUI input to set where tools generate/edit code.
+- Type `/wd` to print the currently active working directory.
+
 ## Operating Modes
 
 Configured in `companion.yaml`:
@@ -137,6 +141,10 @@ Lint policy note:
 ### Self-hosted (Docker)
 
 Use files under `docker/` and configure secrets via env vars.
+
+Sandbox runtime behavior:
+- If a container runtime is available but sandbox image is missing, Companion now falls back to direct host execution when `sandbox.allow_direct_fallback: true`.
+- Build image for full isolation: `podman build -t companion-sandbox:latest docker/sandbox` (or Docker equivalent).
 
 ### Binary vs Container
 

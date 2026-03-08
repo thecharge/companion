@@ -134,7 +134,10 @@ export function ChatPane({
   });
 
   const mode = session?.mode ?? SessionMode.Local;
-  const visibleMessages = [...messages].reverse().slice(scrollOffset, scrollOffset + VISIBLE_MESSAGES).reverse();
+  const visibleMessages = [...messages]
+    .reverse()
+    .slice(scrollOffset, scrollOffset + VISIBLE_MESSAGES)
+    .reverse();
 
   return (
     <Box flexDirection="column" flexGrow={1} borderStyle="single" borderColor={active ? "cyan" : "gray"}>

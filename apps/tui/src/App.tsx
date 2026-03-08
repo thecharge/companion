@@ -140,9 +140,7 @@ export function App() {
               break;
             case "tool_start":
               setTask((prev) =>
-                prev
-                  ? { ...prev, tool: String(payload["tool"] ?? ""), status: TaskStatus.RunningTool }
-                  : null,
+                prev ? { ...prev, tool: String(payload["tool"] ?? ""), status: TaskStatus.RunningTool } : null,
               );
               addLog(`tool ${String(payload["tool"] ?? "")}`);
               break;
