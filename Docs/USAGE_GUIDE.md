@@ -17,6 +17,7 @@ bun run tui
 
 Runtime continuity rule:
 - If cloud credentials return 401/403 during a run, Companion automatically falls back to local alias to keep the session usable.
+- This applies regardless of whether cloud aliases map to Anthropic, OpenAI, or Gemini.
 
 Set default in `companion.yaml`:
 
@@ -43,6 +44,10 @@ Mode validation quick checks:
 - `balanced`: verify cloud path works when keys are valid, and falls back to local on auth error.
 - `cloud`: verify cloud alias usage and expected fallback behavior when provider errors occur.
 
+Orchestration validation quick checks:
+- Router picks only configured agents; if an invalid target is produced, runtime falls back to a valid configured agent.
+- Agent loop is bounded by `max_turns` and returns a terminal state (`done`, `max_turns`, `error`, or `cancelled`).
+
 ```bash
 curl -s -X POST http://localhost:3000/sessions \
   -H "Authorization: Bearer dev-secret" \
@@ -64,7 +69,7 @@ When Companion detects a reusable missing capability:
 1. It proposes a new skill scaffold.
 2. You respond `yes` or `no`.
 3. On `yes`, a new file is generated under `skills/<skill-name>/skill.yaml`.
-4. Restart the server to load the new skill.
+4. Skill is loaded and registered immediately in the same running session.
 
 ## Brownfield Usage Pattern
 

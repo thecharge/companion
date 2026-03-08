@@ -66,6 +66,11 @@ Mode behavior is policy-based, not provider-biased:
 - `cloud` prefers cloud aliases and falls back only when missing config.
 - If cloud credentials fail at runtime (401/403), Companion falls back to `local` alias for continuity.
 
+Provider-switch guarantee:
+- Cloud aliases are config-driven and can point to Anthropic, OpenAI, Gemini, or any supported provider.
+- Orchestration logic does not hardcode a specific cloud vendor.
+- Runtime auth fallback is applied on provider auth errors so a bad cloud key does not hard-stop a session.
+
 Set default mode under:
 
 ```yaml
@@ -116,7 +121,8 @@ Flow:
 1. Orchestrator evaluates whether existing registered tools/skills can solve the task.
 2. If not, it asks for confirmation to acquire a new skill.
 3. On `yes`, Companion scaffolds `skills/<new-skill>/skill.yaml`.
-4. On `no`, proposal is cancelled and normal execution continues.
+4. The new skill is loaded, registered, and made available to worker agents in the same running session.
+5. On `no`, proposal is cancelled and normal execution continues.
 
 Skill tooling included:
 - `skill_of_skills`: recommends matching skills for a task.
@@ -158,6 +164,11 @@ Current status:
 - `lint`: passing
 - `typecheck`: passing across all workspaces
 - `test`: passing across all workspaces
+
+End-to-end verification matrix:
+- Baseline gates: `bun run lint && bun run typecheck && bun run test`
+- Mode remapping and loop tests: `bun --cwd packages/agents run test`
+- Runtime health (server): `curl -s -H 'Authorization: Bearer dev-secret' http://localhost:3000/health`
 
 Lint policy note:
 - `biome.json` disables `complexity.useLiteralKeys` and `style.noNonNullAssertion` to keep lint actionable for this codebase while preserving strict compile and test gates.

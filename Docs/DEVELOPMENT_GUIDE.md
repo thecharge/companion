@@ -22,6 +22,10 @@ Required for cloud and hybrid workloads:
 - Valid provider API key(s) for configured cloud aliases
 - Outbound HTTPS connectivity to provider endpoints
 
+Provider routing note:
+- Cloud aliases are provider-agnostic and can be remapped between Anthropic/OpenAI/Gemini via `companion.yaml`.
+- Runtime auth failure fallback keeps sessions alive by dropping to local alias when cloud credentials are invalid.
+
 Recommended for production:
 - Container runtime pinned (`docker` or `podman`)
 - `sandbox.allow_direct_fallback: false`
@@ -43,6 +47,18 @@ bunx turbo run typecheck --filter=@companion/agents --filter=@companion/server
 bunx turbo run test --filter=@companion/agents --filter=@companion/skills
 ```
 
+Orchestration-level verification:
+
+```bash
+bun --cwd packages/agents run test
+```
+
+This suite validates:
+- deterministic explicit skill proposal path,
+- confirm/create/register loop,
+- mode remapping (`local`/`balanced`/`cloud`),
+- preservation of additional configured agents during remap.
+
 Run full readiness gate:
 
 ```bash
@@ -61,7 +77,7 @@ bun run readiness
 1. Create `skills/<name>/skill.yaml`.
 2. Define tool schema and script.
 3. Add tool name to an agent in `companion.yaml`.
-4. Restart server so `loadSkillsDir` picks it up.
+4. If created through the acquisition loop, it is loaded immediately; manual file additions are loaded on next startup.
 
 ## Brownfield Integration Playbook
 
