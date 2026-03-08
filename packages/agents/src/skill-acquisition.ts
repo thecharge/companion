@@ -196,7 +196,7 @@ export function renderSkillYaml(spec: ProposedSkillSpec): string {
         "_, status, _ = git('status', '--porcelain')",
         "print(f'Repository: {repo}')",
         "print(f'Current branch: {branch}')",
-        "print(f'Working tree clean: {\"yes\" if not status else \"no\"}')",
+        'print(f\'Working tree clean: {"yes" if not status else "no"}\')',
         "",
         "up_code, upstream, _ = git('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')",
         "if up_code == 0 and upstream:",
