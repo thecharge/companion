@@ -2,6 +2,8 @@
 
 Production-oriented, local-first AI companion built as a Bun + Turbo monorepo.
 
+> Code Name: Titan
+
 By Radoslav Sandov
 
 Companion is designed to run in two realities:
@@ -35,6 +37,8 @@ cp .env.example .env
 
 bun install
 bun run pull      # pulls default local model
+ollama pull nomic-embed-text:latest 
+ollama pull qwen3:1.7b
 ```
 
 Run services in two terminals:
