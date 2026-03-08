@@ -24,7 +24,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Development guide: `Docs/DEVELOPMENT_GUIDE.md`
 
 ## Prerequisites
-
+- Python 3.x
 - Bun `>= 1.1.0`
 - Ollama `>= 0.17.x` for local models
 - Optional cloud key(s) for non-local mode (Anthropic configured by default)
