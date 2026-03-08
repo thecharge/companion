@@ -1,0 +1,112 @@
+name: git-branch-hygiene
+version: "1.0.0"
+description: "Check repository branch hygiene: current branch state, ahead/behind status, stale merged branches, and uncommitted work."
+tags: [git, hygiene, scm, maintenance]
+
+tools:
+  - name: git_branch_hygiene_check
+    description: "Run a branch hygiene report for a git repository path."
+    parameters:
+      repo_path:
+        type: string
+        description: "Repository path relative to working directory (default: .)"
+        required: false
+      stale_days:
+        type: number
+        description: "Flag branches not updated for this many days (default: 30)"
+        required: false
+    timeout: 45
+    script: |
+      python3 - << 'PYEOF'
+      import os
+      import sys
+      import time
+      import subprocess
+      from pathlib import Path
+
+      working_dir = Path(os.environ.get("WORKING_DIR", ".")).resolve()
+      repo_rel = os.environ.get("COMPANION_ARG_REPO_PATH", ".").strip() or "."
+      stale_days_raw = os.environ.get("COMPANION_ARG_STALE_DAYS", "30").strip() or "30"
+
+      try:
+          stale_days = int(float(stale_days_raw))
+      except Exception:
+          stale_days = 30
+
+      repo = (working_dir / repo_rel).resolve()
+      if not str(repo).startswith(str(working_dir)):
+          print(f"ERROR: repo_path escapes working directory: {repo_rel}")
+          sys.exit(1)
+
+      if not repo.exists():
+          print(f"ERROR: repo_path does not exist: {repo}")
+          sys.exit(1)
+
+      def git(*args):
+          p = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True)
+          return p.returncode, p.stdout.strip(), p.stderr.strip()
+
+      code, _, _ = git("rev-parse", "--git-dir")
+      if code != 0:
+          print(f"ERROR: not a git repository: {repo}")
+          sys.exit(1)
+
+      print(f"Repository: {repo}")
+
+      code, branch, _ = git("rev-parse", "--abbrev-ref", "HEAD")
+      print(f"Current branch: {branch if code == 0 and branch else 'unknown'}")
+
+      code, status_short, _ = git("status", "--porcelain")
+      dirty = bool(status_short)
+      print(f"Working tree clean: {'no' if dirty else 'yes'}")
+      if dirty:
+          lines = status_short.splitlines()[:20]
+          print("Uncommitted changes (first 20):")
+          for line in lines:
+              print(f"  {line}")
+
+      code, upstream, _ = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+      if code == 0 and upstream:
+          code, counts, _ = git("rev-list", "--left-right", "--count", f"{upstream}...HEAD")
+          if code == 0 and counts:
+              behind, ahead = counts.split()
+              print(f"Upstream: {upstream} | Ahead: {ahead} | Behind: {behind}")
+          else:
+              print(f"Upstream: {upstream} | Ahead/Behind: unknown")
+      else:
+          print("Upstream: not configured")
+
+      code, merged, _ = git("branch", "--merged")
+      merged_branches = []
+      if code == 0 and merged:
+          merged_branches = [b.replace("*", "").strip() for b in merged.splitlines() if b.strip()]
+      protected = {"main", "master", "develop", branch}
+      merged_candidates = [b for b in merged_branches if b not in protected]
+      print(f"Merged branch cleanup candidates: {len(merged_candidates)}")
+      for b in merged_candidates[:20]:
+          print(f"  {b}")
+
+      code, refs, _ = git("for-each-ref", "--sort=-committerdate", "--format=%(refname:short)\t%(committerdate:unix)", "refs/heads")
+      if code == 0 and refs:
+          cutoff = time.time() - stale_days * 86400
+          stale = []
+          for line in refs.splitlines():
+              parts = line.split("\t")
+              if len(parts) != 2:
+                  continue
+              bname, ts = parts
+              try:
+                  ts = int(ts)
+              except Exception:
+                  continue
+              if ts < cutoff and bname not in protected:
+                  stale.append((bname, ts))
+          print(f"Stale branches (> {stale_days} days): {len(stale)}")
+          for bname, ts in stale[:20]:
+              age_days = int((time.time() - ts) / 86400)
+              print(f"  {bname} ({age_days} days old)")
+      else:
+          print("Stale branch analysis: unavailable")
+
+      print("Branch hygiene report complete.")
+      PYEOF
