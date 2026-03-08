@@ -7,7 +7,7 @@
  */
 
 import { join, resolve } from "node:path";
-import type { Config } from "@companion/config";
+import type { Config, SandboxConfig, SandboxRuntime } from "@companion/config";
 import type { DB, SessionId } from "@companion/db";
 import type { OAITool } from "@companion/llm";
 
@@ -240,19 +240,134 @@ const searchHistoryTool: ToolDefinition = {
   },
 };
 
-// ── Sandbox (Bun.spawn + Docker) ─────────────────────────────
+// ── Sandbox ───────────────────────────────────────────────────
+//
+// Execution strategy, resolved once at startup from companion.yaml sandbox:
+//
+//   docker  — docker run --rm  (Docker Desktop / Docker Engine)
+//   podman  — podman run --rm  (rootless, drop-in Docker replacement)
+//   nerdctl — nerdctl run --rm (containerd CLI)
+//   direct  — sh -c in working dir, no container isolation
+//
+// All three container runtimes share the same CLI surface we use here
+// (run/ps/rm with identical flags), so the execution path is identical.
+//
+// Strategy resolution for runtime:"auto":
+//   1. Probe docker  — use if daemon responds to "docker info"
+//   2. Probe podman  — use if daemon responds to "podman info"
+//   3. Probe nerdctl — use if daemon responds to "nerdctl info"
+//   4. If allow_direct_fallback:true → warn + use direct
+//   5. If allow_direct_fallback:false → error on any shell tool call
+
+export type SandboxStrategyResolved =
+  | { kind: "container"; runtime: "docker" | "podman" | "nerdctl"; image: string; network: string }
+  | { kind: "direct"; warning: string }
+  | { kind: "refused"; reason: string };
+
+/** Probe a single container runtime binary. Returns true if its daemon is reachable. */
+async function probeRuntime(binary: string): Promise<boolean> {
+  try {
+    const p = Bun.spawn([binary, "info"], { stdout: "pipe", stderr: "pipe" });
+    await p.exited;
+    return p.exitCode === 0;
+  } catch {
+    // Binary not in PATH, or daemon not running
+    return false;
+  }
+}
+
+/**
+ * Resolve the sandbox strategy from config.
+ * Called once at SandboxExecutor construction; result is immutable.
+ */
+async function resolveStrategy(cfg: SandboxConfig): Promise<SandboxStrategyResolved> {
+  const { runtime, allow_direct_fallback, image, network } = cfg;
+
+  // Explicit runtime requested — probe it, error if not available
+  if (runtime !== "auto" && runtime !== "direct") {
+    const ok = await probeRuntime(runtime);
+    if (ok) return { kind: "container", runtime, image, network };
+    return {
+      kind: "refused",
+      reason:
+        `sandbox.runtime is set to "${runtime}" but it is not available. ` +
+        `Install ${runtime} or change sandbox.runtime in companion.yaml.`,
+    };
+  }
+
+  // Explicit direct — no probing needed
+  if (runtime === "direct") {
+    return {
+      kind: "direct",
+      warning: 'sandbox.runtime is set to "direct" — commands run unsandboxed on the host.',
+    };
+  }
+
+  // Auto — probe in order of preference
+  for (const rt of ["docker", "podman", "nerdctl"] as const) {
+    if (await probeRuntime(rt)) {
+      return { kind: "container", runtime: rt, image, network };
+    }
+  }
+
+  // Nothing found
+  if (allow_direct_fallback) {
+    return {
+      kind: "direct",
+      warning:
+        "No container runtime found (tried docker, podman, nerdctl). " +
+        "Falling back to direct host execution — commands are NOT sandboxed. " +
+        "Install Docker or Podman, or set sandbox.runtime: direct to silence this warning.",
+    };
+  }
+
+  return {
+    kind: "refused",
+    reason:
+      "No container runtime found (tried docker, podman, nerdctl) and " +
+      "sandbox.allow_direct_fallback is false. " +
+      "Install Docker or Podman, or set sandbox.allow_direct_fallback: true " +
+      "to allow unsandboxed execution.",
+  };
+}
 
 export class SandboxExecutor {
-  private safeBase: string;
+  private readonly safeBase: string;
+  private readonly sandboxCfg: SandboxConfig;
+  private strategy: SandboxStrategyResolved | null = null; // set by probe()
 
-  constructor(private cfg: Config) {
+  constructor(private readonly cfg: Config) {
     this.safeBase = resolve(process.cwd());
+    this.sandboxCfg = cfg.sandbox;
+  }
+
+  /**
+   * Probe the environment and cache the execution strategy.
+   * Must be called once at server startup before any run() calls.
+   * Logs the result clearly so operators know what mode is active.
+   */
+  async probe(): Promise<SandboxStrategyResolved> {
+    this.strategy = await resolveStrategy(this.sandboxCfg);
+    return this.strategy;
+  }
+
+  /** Human-readable description of the active strategy, for startup logs. */
+  describe(): string {
+    if (!this.strategy) return "not yet probed";
+    switch (this.strategy.kind) {
+      case "container":
+        return `${this.strategy.runtime} (image: ${this.strategy.image}, network: ${this.strategy.network})`;
+      case "direct":
+        return "direct host execution (no container isolation)";
+      case "refused":
+        return `refused — ${this.strategy.reason}`;
+    }
   }
 
   private safeWorkingDir(workingDir: string): string {
     const abs = resolve(workingDir);
     if (!abs.startsWith(this.safeBase)) {
-      throw new Error(`SECURITY: working_dir "${workingDir}" is outside safe base "${this.safeBase}"`);
+      throw new Error(`SECURITY: working_dir "${workingDir}" escapes safe base "${this.safeBase}"`);
     }
     return abs;
   }
@@ -260,27 +375,28 @@ export class SandboxExecutor {
   async run(
     command: string,
     workingDir: string,
-    timeoutMs = 30_000,
+    timeoutMs: number,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    // Lazy probe — in case probe() was not called (tests, etc.)
+    if (!this.strategy) await this.probe();
+    const strategy = this.strategy!;
+
+    if (strategy.kind === "refused") {
+      throw new Error(`Shell execution refused: ${strategy.reason}`);
+    }
+
     const safeDir = this.safeWorkingDir(workingDir);
-    const cfg = this.cfg.tools?.["run_shell"];
-    const image = cfg?.["image"] ?? "companion-sandbox:latest";
-
-    // Check if Docker is available
-    const dockerCheck = Bun.spawn(["docker", "info"], { stdout: "pipe", stderr: "pipe" });
-    await dockerCheck.exited;
-    const useDocker = dockerCheck.exitCode === 0;
-
     let proc: ReturnType<typeof Bun.spawn>;
 
-    if (useDocker) {
+    if (strategy.kind === "container") {
+      const { runtime, image, network } = strategy;
       proc = Bun.spawn(
         [
-          "docker",
+          runtime,
           "run",
           "--rm",
-          "--network=none",
-          `--label=managed_by=companion`,
+          `--network=${network}`,
+          "--label=managed_by=companion",
           `--volume=${safeDir}:/workspace:rw`,
           "--workdir=/workspace",
           image,
@@ -291,15 +407,15 @@ export class SandboxExecutor {
         { stdout: "pipe", stderr: "pipe" },
       );
     } else {
+      // direct — warn is already surfaced at probe time
       proc = Bun.spawn(["sh", "-c", command], { cwd: safeDir, stdout: "pipe", stderr: "pipe" });
     }
 
-    const timeout = setTimeout(() => proc.kill(), timeoutMs);
-
+    const timer = setTimeout(() => proc.kill(), timeoutMs);
     try {
       await proc.exited;
     } finally {
-      clearTimeout(timeout);
+      clearTimeout(timer);
     }
 
     const stdout = await new Response(proc.stdout).text();
@@ -307,20 +423,24 @@ export class SandboxExecutor {
     return { stdout, stderr, exitCode: proc.exitCode ?? 1 };
   }
 
-  /** Kill all companion-managed containers left from previous crashes */
+  /** Kill all companion-managed containers left from a previous crash. */
   async cleanupZombies(): Promise<void> {
+    if (!this.strategy || this.strategy.kind !== "container") return;
+    const { runtime } = this.strategy;
     try {
-      const list = Bun.spawn(["docker", "ps", "-a", "-q", "--filter", "label=managed_by=companion"], {
+      const list = Bun.spawn([runtime, "ps", "-a", "-q", "--filter", "label=managed_by=companion"], {
         stdout: "pipe",
         stderr: "pipe",
       });
       await list.exited;
       const ids = (await new Response(list.stdout).text()).trim();
       if (!ids) return;
-      const rm = Bun.spawn(["docker", "rm", "-f", ...ids.split("\n")], { stdout: "pipe", stderr: "pipe" });
+      const ids_arr = ids.split("\n").filter(Boolean);
+      if (!ids_arr.length) return;
+      const rm = Bun.spawn([runtime, "rm", "-f", ...ids_arr], { stdout: "pipe", stderr: "pipe" });
       await rm.exited;
     } catch {
-      // Docker not available — no-op
+      // Cleanup failure is non-fatal
     }
   }
 }
@@ -342,7 +462,8 @@ const runShellTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   },
   handler: async (args, ctx) => {
     const cmd = String(args["command"] ?? "");
-    const result = await sandbox.run(cmd, ctx.working_dir, 30_000);
+    const timeoutMs = ctx.cfg.sandbox.timeout_seconds * 1000;
+    const result = await sandbox.run(cmd, ctx.working_dir, timeoutMs);
     const out = result.stdout.trim();
     const err = result.stderr.trim();
     const parts = [`Exit: ${result.exitCode}`];
@@ -402,7 +523,8 @@ const runTestsTool = (sandbox: SandboxExecutor): ToolDefinition => ({
   },
   handler: async (args, ctx) => {
     const cmd = String(args["command"] ?? "bun test");
-    const result = await sandbox.run(cmd, ctx.working_dir, 120_000);
+    const timeoutMs = ctx.cfg.sandbox.tests_timeout_seconds * 1000;
+    const result = await sandbox.run(cmd, ctx.working_dir, timeoutMs);
     const out = result.stdout.trim();
     const err = result.stderr.trim();
 

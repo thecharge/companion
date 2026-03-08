@@ -10,6 +10,47 @@ import { z } from "zod";
 
 // ── Schema ────────────────────────────────────────────────────
 
+// ── Sandbox schema ────────────────────────────────────────────
+//
+// Controls how run_shell and run_tests execute commands.
+//
+//   runtime:
+//     "auto"    — probe docker → podman → nerdctl in order; use first available
+//     "docker"  — require docker; error if not found
+//     "podman"  — require podman; error if not found
+//     "nerdctl" — require nerdctl (containerd CLI); error if not found
+//     "direct"  — skip containers entirely, run in host shell (no isolation)
+//
+//   allow_direct_fallback:
+//     true  — if "auto" finds no container runtime, warn and run directly
+//     false — if "auto" finds no container runtime, refuse to execute (safer)
+//
+//   image:
+//     OCI image used when a container runtime is available.
+//     Build with:  docker build -t companion-sandbox:latest ./sandbox
+//     Skip image building:  set runtime to "direct" (dev only)
+//
+//   network:
+//     "none"  — no network inside container (default, safest)
+//     "host"  — share host network (e.g. when tool needs localhost services)
+//     "bridge" — standard Docker bridge NAT
+
+export const SandboxRuntimeSchema = z.enum(["auto", "docker", "podman", "nerdctl", "direct"]);
+export type SandboxRuntime = z.infer<typeof SandboxRuntimeSchema>;
+
+const SandboxNetworkSchema = z.enum(["none", "host", "bridge"]).default("none");
+
+const SandboxSchema = z.object({
+  runtime: SandboxRuntimeSchema.default("auto"),
+  allow_direct_fallback: z.boolean().default(true),
+  image: z.string().default("companion-sandbox:latest"),
+  network: SandboxNetworkSchema,
+  timeout_seconds: z.number().int().positive().default(30),
+  tests_timeout_seconds: z.number().int().positive().default(120),
+});
+
+export type SandboxConfig = z.infer<typeof SandboxSchema>;
+
 const ModelSchema = z.object({
   provider: z.enum(["ollama", "anthropic", "openai", "gemini", "copilot"]),
   model: z.string(),
@@ -96,6 +137,8 @@ const ConfigSchema = z.object({
       }),
     )
     .default({}),
+
+  sandbox: SandboxSchema.default({}),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

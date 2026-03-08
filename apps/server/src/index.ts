@@ -580,7 +580,18 @@ Bun.serve<{ session_id: string }>({
 });
 
 // Startup tasks
-sandbox.cleanupZombies().catch((e) => log.warn("Zombie cleanup error", e));
+// Probe sandbox strategy first — must complete before any tool calls
+const sandboxStrategy = await sandbox.probe();
+await sandbox.cleanupZombies().catch((e) => log.warn("Zombie cleanup error", e));
+
+if (sandboxStrategy.kind === "container") {
+  log.info(`Sandbox: ${sandbox.describe()}`);
+} else if (sandboxStrategy.kind === "direct") {
+  log.warn(`Sandbox warning: ${sandboxStrategy.warning}`);
+} else {
+  // kind === "refused" — shell tools will throw when called; surface early
+  log.warn(`Sandbox refused: ${sandboxStrategy.reason}`);
+}
 
 // Check embed model availability
 try {

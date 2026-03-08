@@ -106,13 +106,34 @@ mode:
     cloud:
       description: "Cloud orchestrator and agents — maximum capability"
 
+# ── Sandbox ───────────────────────────────────────────────────
+# Controls how run_shell and run_tests execute commands.
+#
+# runtime options:
+#   auto    — probe docker → podman → nerdctl in order; use first available (default)
+#   docker  — use Docker explicitly; error at startup if not available
+#   podman  — use Podman explicitly; error at startup if not available
+#   nerdctl — use nerdctl (containerd CLI); error at startup if not available
+#   direct  — skip containers, run in host shell (dev/trusted environments only)
+#
+# allow_direct_fallback:
+#   true  (default) — if auto finds no runtime, warn and run commands directly
+#   false — if auto finds no runtime, refuse all shell tool calls (safer for prod)
+#
+# network:
+#   none   (default) — no network access inside container
+#   host   — share host network (needed if tools must reach localhost services)
+#   bridge — standard bridge NAT
+#
+# Timeouts can be tuned here rather than buried in tool definitions.
+sandbox:
+  runtime:               ${COMPANION_SANDBOX_RUNTIME:-auto}
+  allow_direct_fallback: true
+  image:                 companion-sandbox:latest
+  network:               none
+  timeout_seconds:       30
+  tests_timeout_seconds: 120
+
 tools:
-  run_shell:
-    image:          companion-sandbox:latest
-    timeout_seconds: 30
-    allow_network:  false
-  run_tests:
-    image:          companion-sandbox:latest
-    timeout_seconds: 120
   web_fetch:
     timeout_seconds: 15

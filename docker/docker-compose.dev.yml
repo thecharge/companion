@@ -1,0 +1,36 @@
+# Companion — development compose override
+#
+# Mounts host source directories into the server container for hot-reload.
+# Bun's module resolution follows the mounts, so edits take effect on next
+# request without rebuilding the image.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
+#
+# Or add to your shell (e.g. .bashrc):
+#   alias companion-dev='docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml'
+#
+# This file intentionally has no "version:" key — it's been obsolete since Compose v2.
+
+services:
+  server:
+    # Override the image CMD to also watch for changes
+    command: ["bun", "--watch", "run", "apps/server/src/index.ts"]
+    environment:
+      # Log level more verbose in dev
+      LOG_LEVEL: "debug"
+    volumes:
+      # Mount live source — edits on host are reflected immediately
+      - ./packages:/app/packages:ro
+      - ./apps:/app/apps:ro
+      - ./scripts:/app/scripts:ro
+      # Data and workspace writable
+      - companion-data:/app/data
+      - companion-workspace:/app/workspace
+      # Config and skills editable from host
+      - ./companion.yaml:/app/companion.yaml:ro
+      - ./skills:/app/skills:ro
+
+volumes:
+  companion-data:
+  companion-workspace:
