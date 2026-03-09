@@ -4,9 +4,6 @@ set -euo pipefail
 echo "[pre-commit] formatting..."
 bun run format
 
-# echo "[pre-commit] staging formatter changes..."
-# git add -A
-
 echo "[pre-commit] lint..."
 bun run lint
 
