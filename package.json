@@ -16,6 +16,7 @@
     "tui": "bun run apps/tui/src/index.tsx",
     "pull": "bun run scripts/pull.ts",
     "readiness": "bash scripts/readiness-check.sh",
+    "webhook:smoke": "bash scripts/webhook-smoke.sh",
     "proof:runtime": "bun run scripts/runtime-proof.ts",
     "proof:providers": "bun run scripts/provider-proof.ts",
     "build:tui:exe": "bash scripts/build-tui-executable.sh",

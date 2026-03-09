@@ -27,6 +27,8 @@ export const RoutePath = {
   Capabilities: "/capabilities",
   SlackWebhook: "/integrations/slack/events",
   TelegramWebhook: "/integrations/telegram/webhook",
+  IntegrationsTelemetryConfig: "/integrations/telemetry/config",
+  IntegrationsTelemetryStats: "/integrations/telemetry/stats",
   Sessions: "/sessions",
   SessionMessagesSuffix: "/messages",
   SessionBlackboardSuffix: "/blackboard",

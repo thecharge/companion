@@ -8,6 +8,30 @@ Companion includes first-party webhook adapters in the server runtime:
 
 No separate SDK package is required.
 
+## Real-World Webhook Runbook
+
+Use this sequence exactly when you want the integrations to work outside local theory.
+
+1. Start Companion server:
+
+```bash
+bun run server
+```
+
+2. Expose it on a public HTTPS URL (required by Slack/Telegram):
+
+```bash
+# Example with cloudflared
+cloudflared tunnel --url http://localhost:3000
+
+# Or with ngrok
+ngrok http 3000
+```
+
+3. Copy the HTTPS URL from the tunnel output, for example `https://abc123.trycloudflare.com`.
+4. Use that URL for Slack Event Subscriptions and Telegram `setWebhook`.
+5. Verify webhook registration is healthy before testing messages.
+
 ## What You Need
 
 Before enabling integrations, make sure all items below are ready:
@@ -108,6 +132,41 @@ TELEGRAM_REQUIRED_PASSPHRASE=<shared-passphrase>
 - add your workspace ID to `trusted_team_ids`
 9. If you require a second factor, set `required_passphrase` and require users to prefix messages with it.
 
+10. Invite the bot to the target channel before expecting events.
+
+Slack command examples:
+
+```text
+/invite @your-bot-name
+```
+
+How to get trusted IDs for `companion.yaml`:
+
+1. Workspace ID (`trusted_team_ids`): from Slack app dashboard basic info.
+2. Channel ID (`trusted_channel_ids`): open channel details or copy link (`/archives/C...`).
+3. User ID (`trusted_user_ids`): user profile menu -> copy member ID (`U...`).
+
+Slack webhook registration verification:
+
+1. In Slack Event Subscriptions, Request URL must show as verified.
+2. If it fails, check server logs for `invalid slack signature` or content-type errors.
+
+Local signature test with a valid computed signature:
+
+```bash
+SLACK_SIGNING_SECRET='replace-me'
+TS=$(date +%s)
+BODY='{"type":"url_verification","challenge":"ok"}'
+BASE="v0:${TS}:${BODY}"
+SIG="v0=$(printf '%s' "$BASE" | openssl dgst -sha256 -hmac "$SLACK_SIGNING_SECRET" -hex | sed 's/^.* //')"
+
+curl -s -X POST http://localhost:3000/integrations/slack/events \
+  -H "Content-Type: application/json" \
+  -H "x-slack-request-timestamp: ${TS}" \
+  -H "x-slack-signature: ${SIG}" \
+  -d "$BODY"
+```
+
 ## Telegram Setup (Detailed)
 
 1. Create bot with BotFather.
@@ -133,6 +192,17 @@ Use the response to collect:
 5. Add these IDs to `trusted_user_ids` and `trusted_chat_ids`.
 6. If you require a second factor, set `required_passphrase` and require users to prefix messages with it.
 
+Check webhook status after registration:
+
+```bash
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Expected:
+- `ok: true`
+- your webhook URL present
+- empty `last_error_message`
+
 ## Verification Checklist
 
 Run this after setup:
@@ -142,6 +212,39 @@ Run this after setup:
 3. Telegram webhook set succeeds (`"ok": true`).
 4. Untrusted sender is ignored (`reason: untrusted_user` or `untrusted_chat`).
 5. Trusted sender with passphrase is accepted.
+6. Bot actually responds in Slack/Telegram chat, not only via local curl.
+
+Telemetry endpoints (required for operational visibility):
+
+- `GET /integrations/telemetry/config`
+- `GET /integrations/telemetry/stats`
+
+Example:
+
+```bash
+curl -s http://localhost:3000/integrations/telemetry/config \
+  -H "Authorization: Bearer ${COMPANION_SECRET:-dev-secret}"
+
+curl -s http://localhost:3000/integrations/telemetry/stats \
+  -H "Authorization: Bearer ${COMPANION_SECRET:-dev-secret}"
+```
+
+Run bundled smoke check:
+
+```bash
+bun run webhook:smoke
+```
+
+End-to-end smoke test (real usage):
+
+1. Keep server and tunnel running.
+2. Send message from a trusted user in a trusted channel/chat:
+- Slack: `<passphrase> status`
+- Telegram: `<passphrase> status`
+3. Confirm:
+- request hits webhook route
+- message is accepted (not `ignored`)
+- reply is posted back by bot token
 
 Quick Telegram signed test:
 
@@ -179,4 +282,22 @@ Expected result: unauthorized when signature is invalid.
 - Webhook routes are public by design, but access is controlled by provider signature/secret validation plus your allowlists.
 - In production, do not leave allowlists empty.
 - Startup checks emit warnings in `NODE_ENV=production` when allowlists/passphrases are missing.
+
+## Common Failure Modes
+
+1. Slack Request URL not verified:
+- Cause: server not publicly reachable, invalid TLS URL, wrong path.
+- Fix: use HTTPS tunnel URL and exact path `/integrations/slack/events`.
+
+2. Telegram webhook set but no events delivered:
+- Cause: webhook URL unreachable from Telegram or wrong secret token.
+- Fix: check `getWebhookInfo`, confirm `last_error_message` is empty, verify header secret.
+
+3. Events received but always ignored:
+- Cause: sender/channel/chat not in trusted allowlists or missing passphrase.
+- Fix: add correct IDs and send messages with configured passphrase prefix.
+
+4. Slack signature failures:
+- Cause: wrong signing secret or modified raw body before verification.
+- Fix: verify app signing secret and keep request body unchanged for signature check.
 

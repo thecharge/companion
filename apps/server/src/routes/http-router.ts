@@ -85,6 +85,14 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
       return integrationBotService.handleTelegramWebhook(req);
     }
 
+    if (pathName === RoutePath.IntegrationsTelemetryConfig && method === HttpMethod.Get) {
+      return Response.json({ ok: true, telemetry: integrationBotService.getTelemetryConfig() });
+    }
+
+    if (pathName === RoutePath.IntegrationsTelemetryStats && method === HttpMethod.Get) {
+      return Response.json({ ok: true, telemetry: integrationBotService.getTelemetryStats() });
+    }
+
     const sessionRouteResponse = await handleSessionRoutes(req, ctx, sessionMessageService, ctx.auditLogService);
     if (sessionRouteResponse) {
       return sessionRouteResponse;

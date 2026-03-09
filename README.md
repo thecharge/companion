@@ -323,6 +323,16 @@ Detailed guides:
 - `Docs/PROVIDER_KEYS_GUIDE.md`
 - `Docs/USAGE_GUIDE.md`
 
+Integration telemetry endpoints:
+- `GET /integrations/telemetry/config`
+- `GET /integrations/telemetry/stats`
+
+Integration smoke check:
+
+```bash
+bun run webhook:smoke
+```
+
 ## Repository Stats URLs
 
 - Build status: `https://github.com/thecharge/companion/actions/workflows/ci.yml`
