@@ -74,3 +74,10 @@ export interface WsEnvelope {
   type: string;
   payload?: unknown;
 }
+
+export interface SyncStatePayload {
+  agent?: string;
+  tool?: string;
+  thought?: string;
+  status?: ActiveTask["status"];
+}

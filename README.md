@@ -148,8 +148,11 @@ packages/
 ## Production Notes
 
 - TUI has been split into modular components for maintainability.
+- TUI transport now uses typed SDK/repository layers under `apps/tui/src/sdk` for API and session operations.
 - Server now applies security response headers by default.
 - Startup checks are centralized for sandbox/model readiness.
+- Server runtime is now split by concern under `apps/server/src/{bootstrap,constants,middleware,routes,services,ws}`.
+- Health and telemetry endpoints are available at `/health` and `/metrics`.
 - Shared enum-like constants now exist in `packages/core` for key literals.
 
 ## Build, Test, Typecheck
