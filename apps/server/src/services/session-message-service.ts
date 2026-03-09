@@ -4,7 +4,7 @@
  */
 
 import { SessionProcessor } from "@companion/agents";
-import type { Config, ConfigStore } from "@companion/config";
+import { type Config, type ConfigStore, resolveWorkingDirConfig } from "@companion/config";
 import { Blackboard, EventType, Logger, MessageRole, type SessionId, asMessage, bus, newId } from "@companion/core";
 import { ConcurrencyError, type DB } from "@companion/db";
 import type { ChatMessage, OAIToolCall } from "@companion/llm";
@@ -16,6 +16,7 @@ const log = new Logger("server.session-service");
 
 interface SessionMessageServiceParams {
   cfg: Config;
+  rootConfigPath: string;
   configStore: ConfigStore;
   db: DB;
   memoryService: MemoryService;
@@ -38,7 +39,8 @@ export class SessionMessageService {
       return;
     }
 
-    const sessionConfig = this.params.configStore.get(sessionId);
+    const baseSessionConfig = this.params.configStore.get(sessionId);
+    const sessionConfig = await resolveWorkingDirConfig(baseSessionConfig, workingDir, this.params.rootConfigPath);
     const history = await this.params.db.messages.list(sessionId, {
       limit: sessionConfig.memory.context_window.max_messages,
     });

@@ -4,9 +4,19 @@
  */
 
 import type { Config } from "@companion/config";
-import { HeaderName } from "../constants/http";
+import { HeaderName, RoutePath } from "../constants/http";
+
+export const isPublicIntegrationWebhook = (req: Request): boolean => {
+  if (req.method !== "POST") return false;
+  const path = new URL(req.url).pathname;
+  return path === RoutePath.SlackWebhook || path === RoutePath.TelegramWebhook;
+};
 
 export const isAuthorizedRequest = (req: Request, cfg: Config): boolean => {
+  if (isPublicIntegrationWebhook(req)) {
+    return true;
+  }
+
   const configuredSecret = cfg.server.secret;
   if (!configuredSecret) {
     return true;

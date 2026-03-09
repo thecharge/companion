@@ -1,3 +1,6 @@
+/// <reference types="bun-types" />
+export {};
+
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 Companion contributors
@@ -13,7 +16,7 @@ interface ProbeResult {
 }
 
 interface ModelConfig {
-  provider: "ollama" | "anthropic" | "openai" | "gemini" | "copilot";
+  provider: "ollama" | "anthropic" | "openai" | "gemini" | "copilot" | "grok";
   model: string;
   base_url?: string;
   api_key?: string;
@@ -133,11 +136,25 @@ async function probeAnthropic(alias: string, model: ModelConfig): Promise<ProbeR
 }
 
 async function probeOpenAICompatible(alias: string, model: ModelConfig): Promise<ProbeResult> {
+  if (model.provider === "copilot" && !model.api_key) {
+    return {
+      alias,
+      provider: model.provider,
+      status: "pass",
+      detail: "copilot has no standard static API key flow; skipping direct token probe",
+    };
+  }
+
   if (!model.api_key) {
     return { alias, provider: model.provider, status: "skip", detail: "missing api_key" };
   }
 
-  const defaultBase = model.provider === "copilot" ? "https://api.githubcopilot.com" : "https://api.openai.com/v1";
+  const defaultBase =
+    model.provider === "copilot"
+      ? "https://api.githubcopilot.com"
+      : model.provider === "grok"
+        ? "https://api.x.ai/v1"
+        : "https://api.openai.com/v1";
   const base = (model.base_url ?? defaultBase).replace(/\/$/, "");
   try {
     const res = await fetch(`${base}/models`, {
@@ -177,7 +194,9 @@ async function probeGemini(alias: string, model: ModelConfig): Promise<ProbeResu
 async function probeModel(alias: string, model: ModelConfig): Promise<ProbeResult> {
   if (model.provider === "ollama") return probeOllama(alias, model);
   if (model.provider === "anthropic") return probeAnthropic(alias, model);
-  if (model.provider === "openai" || model.provider === "copilot") return probeOpenAICompatible(alias, model);
+  if (model.provider === "openai" || model.provider === "copilot" || model.provider === "grok") {
+    return probeOpenAICompatible(alias, model);
+  }
   return probeGemini(alias, model);
 }
 

@@ -5,6 +5,8 @@
  * validates with Zod, and exposes a typed Config + runtime patch store.
  */
 
+import { readdir } from "node:fs/promises";
+import { dirname, extname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -52,7 +54,7 @@ const SandboxSchema = z.object({
 export type SandboxConfig = z.infer<typeof SandboxSchema>;
 
 const ModelSchema = z.object({
-  provider: z.enum(["ollama", "anthropic", "openai", "gemini", "copilot"]),
+  provider: z.enum(["ollama", "anthropic", "openai", "gemini", "copilot", "grok"]),
   model: z.string(),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
@@ -67,6 +69,36 @@ const AgentSchema = z.object({
   reads_from: z.array(z.string()).default([]),
   writes_to: z.array(z.string()).default([]),
   max_turns: z.number().int().positive().default(8),
+});
+
+const WorkflowTrackSchema = z.object({
+  triggers: z.array(z.string()).default([]),
+  stages: z.array(z.string()).default([]),
+});
+
+const IntegrationsSchema = z.object({
+  slack: z
+    .object({
+      enabled: z.coerce.boolean().default(false),
+      bot_token: z.string().optional(),
+      signing_secret: z.string().optional(),
+      mode: z.string().optional(),
+      default_session_title: z.string().default("Slack Session"),
+      max_message_chars: z.number().int().positive().default(2000),
+      max_events_per_minute: z.number().int().positive().default(30),
+    })
+    .default({}),
+  telegram: z
+    .object({
+      enabled: z.coerce.boolean().default(false),
+      bot_token: z.string().optional(),
+      secret_token: z.string().optional(),
+      mode: z.string().optional(),
+      default_session_title: z.string().default("Telegram Session"),
+      max_message_chars: z.number().int().positive().default(2000),
+      max_events_per_minute: z.number().int().positive().default(30),
+    })
+    .default({}),
 });
 
 const ConfigSchema = z.object({
@@ -97,9 +129,11 @@ const ConfigSchema = z.object({
     model: z.string().default("local"),
     max_rounds: z.number().int().positive().default(10),
     verify_results: z.boolean().default(true),
+    workflow_tracks: z.record(z.string(), WorkflowTrackSchema).default({}),
   }),
 
   agents: z.record(z.string(), AgentSchema),
+  agents_dir: z.string().optional(),
 
   memory: z.object({
     context_window: z.object({
@@ -126,6 +160,8 @@ const ConfigSchema = z.object({
     default: z.string().default("local"),
     presets: z.record(z.string(), z.object({ description: z.string() })),
   }),
+
+  integrations: IntegrationsSchema.default({}),
 
   tools: z
     .record(
@@ -170,21 +206,128 @@ function walkInterpolate(obj: unknown): unknown {
   return obj;
 }
 
+const OVERRIDE_CANDIDATES = ["companion.override.yaml", "companion.override.yml", ".companion/companion.yaml"];
+
 // ── Loader ────────────────────────────────────────────────────
 
 export async function loadConfig(path = "./companion.yaml"): Promise<Config> {
+  const absPath = resolve(path);
   const file = Bun.file(path);
   if (!(await file.exists())) {
     throw new Error(`companion.yaml not found at ${path}`);
   }
   const raw = await file.text();
-  const obj = walkInterpolate(parseYaml(raw));
+  const obj = walkInterpolate(parseYaml(raw)) as Record<string, unknown>;
+
+  if (typeof obj.agents_dir === "string") {
+    const baseDir = dirname(absPath);
+    const mergedAgents = await loadAgentsFromDirectory(baseDir, obj.agents_dir);
+    obj.agents = deepMerge(obj.agents ?? {}, mergedAgents);
+  }
+
   const result = ConfigSchema.safeParse(obj);
   if (!result.success) {
     const issues = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Config validation failed:\n${issues}`);
   }
   return result.data;
+}
+
+export async function findNearestOverridePath(workingDir: string, stopDir?: string): Promise<string | undefined> {
+  let current = resolve(workingDir);
+  const stop = stopDir ? resolve(stopDir) : undefined;
+
+  while (true) {
+    for (const candidate of OVERRIDE_CANDIDATES) {
+      const candidatePath = join(current, candidate);
+      if (await Bun.file(candidatePath).exists()) {
+        return candidatePath;
+      }
+    }
+
+    if (stop && current === stop) return undefined;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+export async function loadConfigOverride(path: string): Promise<Partial<Config>> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    throw new Error(`override config not found at ${path}`);
+  }
+  const raw = await file.text();
+  const obj = walkInterpolate(parseYaml(raw));
+  if (!obj || typeof obj !== "object") return {};
+  return obj as Partial<Config>;
+}
+
+export async function resolveWorkingDirConfig(
+  base: Config,
+  workingDir: string,
+  rootConfigPath?: string,
+): Promise<Config> {
+  const rootDir = rootConfigPath ? dirname(resolve(rootConfigPath)) : process.cwd();
+  const overridePath = await findNearestOverridePath(workingDir, rootDir);
+  if (!overridePath) return base;
+
+  const override = await loadConfigOverride(overridePath);
+  const merged = deepMerge(base, override);
+  const result = ConfigSchema.safeParse(merged);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
+    throw new Error(`Working-dir override validation failed (${overridePath}):\n${issues}`);
+  }
+  return result.data;
+}
+
+async function loadAgentsFromDirectory(
+  configDir: string,
+  agentsDir: string,
+): Promise<Record<string, Record<string, unknown>>> {
+  const fullDir = resolve(configDir, agentsDir);
+  const entries = await readdir(fullDir, { withFileTypes: true });
+  const merged: Record<string, Record<string, unknown>> = {};
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const ext = extname(entry.name).toLowerCase();
+    if (ext !== ".yaml" && ext !== ".yml") continue;
+
+    const filePath = join(fullDir, entry.name);
+    const raw = await Bun.file(filePath).text();
+    const parsed = walkInterpolate(parseYaml(raw)) as Record<string, unknown>;
+    const fromFile = parseAgentFile(parsed);
+    Object.assign(merged, fromFile);
+  }
+
+  return merged;
+}
+
+function parseAgentFile(input: Record<string, unknown>): Record<string, Record<string, unknown>> {
+  if (isRecord(input.agents)) {
+    return input.agents as Record<string, Record<string, unknown>>;
+  }
+
+  if (typeof input.name === "string" && isRecord(input)) {
+    const { name, ...rest } = input;
+    return { [name]: rest };
+  }
+
+  const keys = Object.keys(input);
+  if (keys.length === 1) {
+    const key = keys[0];
+    if (key && isRecord(input[key])) {
+      return { [key]: input[key] as Record<string, unknown> };
+    }
+  }
+
+  return {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 // ── Runtime config store (per-session overrides + global patches) ─

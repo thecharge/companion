@@ -90,3 +90,32 @@ Use with new repositories:
 - In production, pin `sandbox.runtime` to `docker` or `podman`.
 - Set `sandbox.allow_direct_fallback: false` in production.
 - Set a non-default `COMPANION_SECRET`.
+
+## Slack and Telegram Usage
+
+Webhook endpoints:
+- Slack: `POST /integrations/slack/events`
+- Telegram: `POST /integrations/telegram/webhook`
+
+Quick validation:
+
+```bash
+curl -s -X POST http://localhost:3000/integrations/slack/events \
+  -H "Content-Type: application/json" \
+  -d '{"type":"url_verification","challenge":"ok"}'
+```
+
+For production, always provide valid Slack signature headers and Telegram secret-token headers.
+
+## Working Directory Override Usage
+
+If `working_dir` is inside a project containing nearest override file (`companion.override.yaml`), that override is merged for that request/session execution path.
+
+Example request with working_dir:
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"run checks","working_dir":"/workspace/app"}'
+```

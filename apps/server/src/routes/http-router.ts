@@ -7,6 +7,7 @@ import { SessionStatus } from "@companion/core";
 import type { AppContext } from "../bootstrap/app-context";
 import { HttpMethod, QueryParam, RoutePath } from "../constants/http";
 import { notFoundResponse } from "../middleware/http-responses";
+import { IntegrationBotService } from "../services/integration-bot-service";
 import { SessionMessageService } from "../services/session-message-service";
 import { handleSessionRoutes } from "./session-routes";
 
@@ -40,6 +41,7 @@ const buildCapabilitiesResponse = (ctx: AppContext): Response => {
 export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Response>) => {
   const sessionMessageService = new SessionMessageService({
     cfg: ctx.cfg,
+    rootConfigPath: ctx.rootConfigPath,
     configStore: ctx.configStore,
     db: ctx.db,
     memoryService: ctx.memoryService,
@@ -47,6 +49,7 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
     embedClient: ctx.embedClient,
     embedAvailable: ctx.embedAvailable,
   });
+  const integrationBotService = new IntegrationBotService(ctx, sessionMessageService);
 
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
@@ -70,6 +73,14 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
 
     if (pathName === RoutePath.Capabilities && method === HttpMethod.Get) {
       return buildCapabilitiesResponse(ctx);
+    }
+
+    if (pathName === RoutePath.SlackWebhook && method === HttpMethod.Post) {
+      return integrationBotService.handleSlackWebhook(req);
+    }
+
+    if (pathName === RoutePath.TelegramWebhook && method === HttpMethod.Post) {
+      return integrationBotService.handleTelegramWebhook(req);
     }
 
     const sessionRouteResponse = await handleSessionRoutes(req, ctx, sessionMessageService, ctx.auditLogService);

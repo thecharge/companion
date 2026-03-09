@@ -66,6 +66,9 @@ bun run proof:runtime -- --strict
 bun run proof:providers -- --strict
 ```
 
+Credential sourcing and provider-proof mapping:
+- `Docs/PROVIDER_KEYS_GUIDE.md`
+
 Run only impacted packages:
 
 ```bash
@@ -143,12 +146,48 @@ Complex lane-oriented skills currently bundled:
 
 ## Orchestration Tracks
 
-The orchestrator supports explicit workflow tracks in addition to standard routing:
+Workflow tracks are config-driven via `orchestrator.workflow_tracks` in `companion.yaml`:
+- `triggers`: intent keywords
+- `stages`: ordered agent list
+
+Runtime implementation:
+- detection and plan assembly: `packages/agents/src/workflow-tracks.ts`
+- execution loop: `packages/agents/src/index.ts`
+
+Default examples in root config:
 - `product_delivery`: `planner -> prd_designer -> delivery_manager -> engineer -> responder`
 - `operations`: `planner -> operations_commander -> analyst -> engineer -> responder`
-- `standard`: existing single-route orchestration + responder synthesis
 
-Track selection is intent-driven (`packages/agents/src/index.ts`) and emits decision events for each stage.
+## Folder-Specific Config Overrides
+
+Companion can load nearest folder override files upward from `working_dir`:
+- `companion.override.yaml`
+- `companion.override.yml`
+- `.companion/companion.yaml`
+
+Resolution lives in `packages/config/src/index.ts` (`resolveWorkingDirConfig`) and is applied per message in `apps/server/src/services/session-message-service.ts`.
+
+## Slack and Telegram Bot Adapters
+
+Server-native webhook adapters (no separate SDK package):
+- Slack: `POST /integrations/slack/events`
+- Telegram: `POST /integrations/telegram/webhook`
+
+Implementation: `apps/server/src/services/integration-bot-service.ts`.
+
+## TUI Executable Workflow
+
+Generate standalone binary:
+
+```bash
+bun run build:tui:exe
+```
+
+Install to user PATH (`~/.local/bin/companion` by default):
+
+```bash
+bun run install:cli
+```
 
 ## Brownfield Integration Playbook
 

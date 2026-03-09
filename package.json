@@ -17,7 +17,10 @@
     "pull": "bun run scripts/pull.ts",
     "readiness": "bash scripts/readiness-check.sh",
     "proof:runtime": "bun run scripts/runtime-proof.ts",
-    "proof:providers": "bun run scripts/provider-proof.ts"
+    "proof:providers": "bun run scripts/provider-proof.ts",
+    "build:tui:exe": "bash scripts/build-tui-executable.sh",
+    "install:cli": "bash scripts/install-cli.sh",
+    "uninstall:cli": "bash scripts/uninstall-cli.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

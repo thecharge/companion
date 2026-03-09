@@ -1,1 +1,8 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "tsBuildInfoFile": ".tsbuildinfo" }, "include": ["src"] }
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "ignoreDeprecations": "5.0"
+  },
+  "include": ["src"]
+}

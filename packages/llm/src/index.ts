@@ -2,7 +2,7 @@
  * @companion/llm
  *
  * Unified LLM client over the OpenAI wire format.
- * Supports: Anthropic, OpenAI, Ollama, Gemini, GitHub Copilot.
+ * Supports: Anthropic, OpenAI, Ollama, Gemini, GitHub Copilot, Grok (xAI).
  *
  * All network calls use Bun's built-in fetch — no node-fetch, no axios.
  */
@@ -316,7 +316,7 @@ export class LLMClient {
     }
   }
 
-  // ── OpenAI-compatible (Anthropic, OpenAI, Copilot) ───────────
+  // ── OpenAI-compatible (Anthropic, OpenAI, Copilot, Grok) ─────
 
   private baseUrl(): string {
     if (this.cfg.base_url) return this.cfg.base_url.replace(/\/$/, "");
@@ -327,6 +327,8 @@ export class LLMClient {
         return "https://api.openai.com/v1";
       case "copilot":
         return "https://api.githubcopilot.com";
+      case "grok":
+        return "https://api.x.ai/v1";
       default:
         return "https://api.openai.com/v1";
     }

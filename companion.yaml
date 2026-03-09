@@ -49,11 +49,24 @@ models:
     api_key:     ${ANTHROPIC_API_KEY:-}
     max_tokens:  4096
     temperature: 0.1
+  grok_fast:
+    provider:    grok
+    model:       grok-3-mini
+    api_key:     ${GROK_API_KEY:-}
+    max_tokens:  4096
+    temperature: 0.2
 
 orchestrator:
   model:          local           # mode overrides this at runtime in balanced/cloud
   max_rounds:     3               # was 10 — lower prevents runaway loops
   verify_results: false           # disabled: same 3B model verifying itself is noise
+  workflow_tracks:
+    product_delivery:
+      triggers: [prd, "product requirement", roadmap, "feature spec", "acceptance criteria", "delivery plan"]
+      stages: [planner, prd_designer, delivery_manager, engineer, responder]
+    operations:
+      triggers: [incident, outage, operations, runbook, sre, deployment, rollback, release, postmortem]
+      stages: [planner, operations_commander, analyst, engineer, responder]
 
 agents:
   analyst:
@@ -138,6 +151,24 @@ mode:
     cloud:
       description: "Cloud orchestrator and agents — maximum capability"
 
+integrations:
+  slack:
+    enabled: ${SLACK_ENABLED:-false}
+    bot_token: ${SLACK_BOT_TOKEN:-}
+    signing_secret: ${SLACK_SIGNING_SECRET:-}
+    mode: ${SLACK_MODE:-balanced}
+    default_session_title: "Slack Session"
+    max_message_chars: 2000
+    max_events_per_minute: 30
+  telegram:
+    enabled: ${TELEGRAM_ENABLED:-false}
+    bot_token: ${TELEGRAM_BOT_TOKEN:-}
+    secret_token: ${TELEGRAM_SECRET_TOKEN:-}
+    mode: ${TELEGRAM_MODE:-balanced}
+    default_session_title: "Telegram Session"
+    max_message_chars: 2000
+    max_events_per_minute: 30
+
 # ── Sandbox ───────────────────────────────────────────────────
 # Controls how run_shell and run_tests execute commands.
 #
@@ -169,3 +200,8 @@ sandbox:
 tools:
   web_fetch:
     timeout_seconds: 15
+
+# Working-directory overrides (nearest path wins, searched upward from working_dir):
+# - companion.override.yaml
+# - companion.override.yml
+# - .companion/companion.yaml

@@ -1,10 +1,19 @@
 {
   "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "editor.rulers": [120],
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
   "editor.codeActionsOnSave": {
     "source.organizeImports.biome": "always",
-    "source.fixAll.biome": "always"
+    "source.fixAll.biome": "always",
+    "source.organizeImports": "never"
   },
   "editor.defaultFormatter": "biomejs.biome",
+  "biome.requireConfiguration": true,
+  "typescript.preferences.quoteStyle": "double",
+  "javascript.preferences.quoteStyle": "double",
   "[typescript]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
@@ -14,7 +23,11 @@
   "[json]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
+  "[jsonc]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
   "files.eol": "\n",
   "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true
+  "files.insertFinalNewline": true,
+  "files.autoSave": "off"
 }

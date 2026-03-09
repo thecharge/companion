@@ -16,6 +16,7 @@ import { runStartupChecks } from "../startup-checks";
 
 export interface AppContext {
   cfg: Config;
+  rootConfigPath: string;
   configStore: ConfigStore;
   db: DB;
   memoryService: MemoryService;
@@ -56,7 +57,8 @@ const checkEmbedAvailability = async (embedBaseUrl: string, embedModelName: stri
 };
 
 export const createAppContext = async (): Promise<AppContext> => {
-  const cfg = await loadConfig("./companion.yaml");
+  const rootConfigPath = "./companion.yaml";
+  const cfg = await loadConfig(rootConfigPath);
   const configStore = new ConfigStore(cfg);
   const db = await createDB(cfg);
 
@@ -101,6 +103,7 @@ export const createAppContext = async (): Promise<AppContext> => {
 
   return {
     cfg,
+    rootConfigPath,
     configStore,
     db,
     memoryService,

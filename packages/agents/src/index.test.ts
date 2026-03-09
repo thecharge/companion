@@ -33,6 +33,7 @@ function createTestConfig(): Config {
       model: "local",
       max_rounds: 3,
       verify_results: false,
+      workflow_tracks: {},
     },
     agents: {
       engineer: {
@@ -70,6 +71,20 @@ function createTestConfig(): Config {
       default: "local",
       presets: {
         local: { description: "Local mode" },
+      },
+    },
+    integrations: {
+      slack: {
+        enabled: false,
+        default_session_title: "Slack Session",
+        max_message_chars: 2000,
+        max_events_per_minute: 30,
+      },
+      telegram: {
+        enabled: false,
+        default_session_title: "Telegram Session",
+        max_message_chars: 2000,
+        max_events_per_minute: 30,
       },
     },
     tools: {},

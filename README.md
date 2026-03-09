@@ -233,6 +233,84 @@ Strict provider gate (fails if any configured provider is missing keys or unreac
 bun run proof:providers -- --strict
 ```
 
+Provider key matrix:
+- `ANTHROPIC_API_KEY` for `anthropic`
+- `OPENAI_API_KEY` for `openai` aliases
+- `GROK_API_KEY` for `grok` aliases (xAI)
+- `GEMINI_API_KEY` for `gemini`
+
+Copilot note:
+- GitHub Copilot does not provide a standard static API key flow like the vendors above.
+- Use `copilot` only when you have a compatible token/proxy flow; otherwise prefer `ollama`, `anthropic`, `openai`, `gemini`, or `grok`.
+
+Credential acquisition and verification guide:
+- `Docs/PROVIDER_KEYS_GUIDE.md`
+
+## Folder-Specific Overrides
+
+Companion supports nearest working-directory overrides so one repo/folder can change behavior without editing root config.
+
+Override search order (nearest parent wins):
+- `companion.override.yaml`
+- `companion.override.yml`
+- `.companion/companion.yaml`
+
+Example override file:
+
+```yaml
+mode:
+  default: cloud
+orchestrator:
+  max_rounds: 2
+tools:
+  web_fetch:
+    timeout_seconds: 10
+```
+
+## CLI Executable
+
+Build standalone TUI executable:
+
+```bash
+bun run build:tui:exe
+```
+
+Install globally (default target: `~/.local/bin/companion`):
+
+```bash
+bun run install:cli
+```
+
+Uninstall:
+
+```bash
+bun run uninstall:cli
+```
+
+After install, run from any folder:
+
+```bash
+companion
+```
+
+## Slack and Telegram Webhooks
+
+Webhook routes are built into the server (no separate SDK package):
+- Slack: `POST /integrations/slack/events`
+- Telegram: `POST /integrations/telegram/webhook`
+
+Required config/env:
+- Slack: `SLACK_ENABLED=true`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
+- Telegram: `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, optional `TELEGRAM_SECRET_TOKEN`
+
+Slack URL verification requests are handled automatically (`challenge` response). Incoming messages create/reuse per-channel sessions and can post assistant replies back using configured bot tokens.
+
+Detailed guides:
+- `Docs/INTEGRATIONS_GUIDE.md`
+- `Docs/CONFIGURATION_GUIDE.md`
+- `Docs/PROVIDER_KEYS_GUIDE.md`
+- `Docs/USAGE_GUIDE.md`
+
 ## Repository Stats URLs
 
 - Build status: `https://github.com/thecharge/companion/actions/workflows/ci.yml`
