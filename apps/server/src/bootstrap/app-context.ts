@@ -5,12 +5,13 @@
 
 import { SessionProcessor } from "@companion/agents";
 import { ConfigStore, loadConfig, type Config } from "@companion/config";
-import { type SessionId } from "@companion/core";
+import { Logger, bus, type SessionId } from "@companion/core";
 import { createDB, type DB } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
 import { MemoryService, SqliteVecStore } from "@companion/memory";
 import { loadSkillsDir, registerSkills, type Skill } from "@companion/skills";
 import { createToolRegistry, type ToolRegistry, type SandboxExecutor } from "@companion/tools";
+import { AuditLogService } from "../services/audit-log-service";
 import { runStartupChecks } from "../startup-checks";
 
 export interface AppContext {
@@ -27,7 +28,11 @@ export interface AppContext {
   embedModelName: string;
   embedAvailable: boolean;
   activeCancels: Map<SessionId, AbortController>;
+  auditLogService: AuditLogService;
 }
+
+const DEFAULT_AUDIT_LOG_PATH = "./data/audit-events.ndjson";
+const log = new Logger("server.audit");
 
 const getEmbedBaseUrl = (cfg: Config): string => {
   const anyOllamaModel = Object.values(cfg.models).find((model) => model.provider === "ollama");
@@ -73,6 +78,14 @@ export const createAppContext = async (): Promise<AppContext> => {
   });
 
   const embedAvailable = await checkEmbedAvailability(embedBaseUrl, embedModelName);
+  const auditLogPath = process.env.COMPANION_AUDIT_LOG_PATH ?? DEFAULT_AUDIT_LOG_PATH;
+  const auditLogService = new AuditLogService(auditLogPath);
+  await auditLogService.initialize();
+  bus.on("*", (event) => {
+    void auditLogService.recordBusEvent(event).catch((error) => {
+      log.warn("audit bus event write failed", error);
+    });
+  });
 
   await runStartupChecks({
     cfg,
@@ -100,5 +113,6 @@ export const createAppContext = async (): Promise<AppContext> => {
     embedModelName,
     embedAvailable,
     activeCancels: new Map<SessionId, AbortController>(),
+    auditLogService,
   };
 };

@@ -113,6 +113,13 @@ curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
 
 More examples: `Docs/EXAMPLES.md`.
 
+Read latest audit events:
+
+```bash
+curl -s http://localhost:3000/audit/events?limit=100 \
+  -H "Authorization: Bearer dev-secret"
+```
+
 ## Self-Improvement Loop
 
 Companion can now propose acquiring a new skill when it detects repeated missing capability.
@@ -149,10 +156,12 @@ packages/
 
 - TUI has been split into modular components for maintainability.
 - TUI transport now uses typed SDK/repository layers under `apps/tui/src/sdk` for API and session operations.
+- TUI now shows structured active execution state (`agent`, stage, tool) instead of only generic spinner dots.
 - Server now applies security response headers by default.
 - Startup checks are centralized for sandbox/model readiness.
 - Server runtime is now split by concern under `apps/server/src/{bootstrap,constants,middleware,routes,services,ws}`.
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
+- Persistent audit events are written to `./data/audit-events.ndjson` (override: `COMPANION_AUDIT_LOG_PATH`) and exposed via `/audit/events`.
 - Shared enum-like constants now exist in `packages/core` for key literals.
 
 ## Build, Test, Typecheck

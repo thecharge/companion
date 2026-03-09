@@ -66,10 +66,16 @@
 - Added `skills/skill-factory/skill.yaml` with `create_skill_template` tool.
 - Engineers can now scaffold a new skill, and orchestrator can ask for explicit user confirmation before creating one.
 
+9. Observability and audit baseline was added.
+- Server now writes structured audit events to `./data/audit-events.ndjson` (configurable via `COMPANION_AUDIT_LOG_PATH`).
+- Authenticated endpoint `/audit/events` exposes recent audit records for operational review.
+- TUI now shows active agent/stage/tool in header state instead of only generic dots.
+
 ## Remaining Gaps Before Claiming Enterprise Grade
 
 1. Formal threat model and secure SDLC process.
 2. Secret management hardening (vault/KMS in non-local environments).
 3. Authn/authz model beyond static API secret.
 4. Audit logging and tamper-evident event retention.
+ - Status: baseline implemented; immutable/tamper-evident retention still not implemented.
 5. CI/CD with signed artifacts + SBOM + vulnerability scanning.

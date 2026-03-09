@@ -23,6 +23,7 @@ export const HttpStatus = {
 export const RoutePath = {
   Health: "/health",
   Metrics: "/metrics",
+  AuditEvents: "/audit/events",
   Capabilities: "/capabilities",
   Sessions: "/sessions",
   SessionMessagesSuffix: "/messages",
@@ -47,6 +48,7 @@ export const HeaderValue = {
 
 export const QueryParam = {
   Limit: "limit",
+  AuditLimit: "limit",
   Session: "session",
   Token: "token",
 } as const;

@@ -21,6 +21,7 @@ Status: completed in current pass.
 ## Phase 1: Reliability and Guardrails
 
 1. Add request IDs and structured logs.
+- In progress: audit event baseline implemented (`/audit/events` + persisted NDJSON).
 2. Add retries/timeouts/circuit-breakers around provider calls.
 3. Add per-tool allowlists and sandbox policy profiles.
 4. Add explicit mode transition rules (local/balanced/cloud).

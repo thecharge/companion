@@ -5,7 +5,7 @@
 
 import { Box, Text } from "ink";
 import React from "react";
-import { LOADER_FRAMES, WS_MESSAGE_TYPE } from "../constants";
+import { LOADER_FRAMES } from "../constants";
 import { CapabilitiesPane } from "./CapabilitiesPane";
 import { ChatPane } from "./ChatPane";
 import { SessionList } from "./SessionList";
@@ -37,6 +37,28 @@ interface AppLayoutProps {
   abortStreaming: () => void;
 }
 
+const getTaskStageLabel = (task: ActiveTask): string => {
+  if (task.status === "running_tool") {
+    return "tool";
+  }
+
+  if (task.status === "synthesizing") {
+    return "synth";
+  }
+
+  return "thinking";
+};
+
+const getThinkingLabel = (task: ActiveTask | null): string => {
+  if (!task) {
+    return "thinking";
+  }
+
+  const stage = getTaskStageLabel(task);
+  const withTool = task.tool ? ` ${stage}:${task.tool}` : ` ${stage}`;
+  return `agent:${task.agent}${withTool}`;
+};
+
 export const AppLayout = ({
   pane,
   sessions,
@@ -67,7 +89,12 @@ export const AppLayout = ({
         Companion (by Radoslav Sandov)
       </Text>
       <Text color="gray">Tab switch / type up/down scroll /wd &lt;path&gt; q quit</Text>
-      {(streaming || task) && <Text color="yellow">thinking{LOADER_FRAMES[loaderFrameIndex]}</Text>}
+      {(streaming || task) && (
+        <Text color="yellow">
+          {getThinkingLabel(task)}
+          {LOADER_FRAMES[loaderFrameIndex]}
+        </Text>
+      )}
       {statusMsg && <Text color="red"> {statusMsg}</Text>}
     </Box>
 

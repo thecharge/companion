@@ -42,11 +42,12 @@ Current:
 - Local-first architecture reduces data exposure
 - Security response headers are enabled in server responses
 - Startup checks now surface unsafe runtime posture (missing sandbox image, direct fallback)
+- Audit events are now persisted as NDJSON (`COMPANION_AUDIT_LOG_PATH`, default `./data/audit-events.ndjson`) and can be queried via authenticated `/audit/events`.
 
 Needed:
 - Identity and RBAC (user/service principals)
 - Key management and rotation
-- Immutable audit logs
+- Tamper-evident / immutable audit log storage (WORM or external immutable sink)
 - Formalized secrets handling for production
 - Centralized policy-as-code checks in CI
 

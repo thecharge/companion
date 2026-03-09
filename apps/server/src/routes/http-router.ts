@@ -4,7 +4,7 @@
  */
 
 import { SessionStatus } from "@companion/core";
-import { HttpMethod, RoutePath } from "../constants/http";
+import { HttpMethod, QueryParam, RoutePath } from "../constants/http";
 import { notFoundResponse } from "../middleware/http-responses";
 import type { AppContext } from "../bootstrap/app-context";
 import { SessionMessageService } from "../services/session-message-service";
@@ -61,11 +61,18 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
       return buildMetricsResponse(ctx);
     }
 
+    if (pathName === RoutePath.AuditEvents && method === HttpMethod.Get) {
+      const limit = Number(url.searchParams.get(QueryParam.AuditLimit) ?? "200");
+      await ctx.auditLogService.recordHttpEvent({ action: "audit_events_list", status: "ok" });
+      const events = await ctx.auditLogService.listRecent(limit);
+      return Response.json({ events });
+    }
+
     if (pathName === RoutePath.Capabilities && method === HttpMethod.Get) {
       return buildCapabilitiesResponse(ctx);
     }
 
-    const sessionRouteResponse = await handleSessionRoutes(req, ctx, sessionMessageService);
+    const sessionRouteResponse = await handleSessionRoutes(req, ctx, sessionMessageService, ctx.auditLogService);
     if (sessionRouteResponse) {
       return sessionRouteResponse;
     }

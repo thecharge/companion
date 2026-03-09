@@ -64,7 +64,6 @@ export const App = () => {
     if (!reconnectTimerRef.current) {
       return;
     }
-
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
   }, []);
@@ -82,9 +81,7 @@ export const App = () => {
 
   useEffect(() => {
     void loadSessionsAndCapabilities();
-    const pollTimer = setInterval(() => {
-      void loadSessionsAndCapabilities();
-    }, POLL_INTERVAL_MS);
+    const pollTimer = setInterval(() => void loadSessionsAndCapabilities(), POLL_INTERVAL_MS);
     return () => clearInterval(pollTimer);
   }, [loadSessionsAndCapabilities]);
 
@@ -238,15 +235,11 @@ export const App = () => {
       clearReconnectTimer,
       closeSocket: () => wsRef.current?.close(),
       exitApp: exit,
-      createSession: () => {
-        void createSession();
-      },
+      createSession: () => void createSession(),
       deleteSession: (sessionId) => {
         void sessionRepository.removeSession(sessionId).then(loadSessionsAndCapabilities);
       },
-      openSession: (session) => {
-        void openSession(session);
-      },
+      openSession: (session) => void openSession(session),
     });
   });
 
