@@ -174,6 +174,14 @@ packages/
 - Agent orchestration roles, intent routes, and workflow tracks are externally defined in YAML (`companion.yaml` under `orchestrator.*`) and validated by `@companion/config`.
 - Multi-lane workflow orchestration is available for product-delivery and operations tracks.
 
+Sandbox execution mode clarity:
+- `docker/docker-compose.yml` sets `COMPANION_SANDBOX_RUNTIME=direct` by default.
+- Reason: the server container does not mount a Docker/Podman socket nor ship a container engine client for nested runtime orchestration.
+- This means `run_shell` and `run_tests` execute directly in the server container context when using default Compose.
+- To force containerized sandbox execution, run the server on the host (or provide a runtime socket/client in your container setup), build `companion-sandbox:latest`, and set:
+  - `COMPANION_SANDBOX_RUNTIME=docker` (or `podman`)
+  - `sandbox.allow_direct_fallback: false`
+
 ## Build, Test, Typecheck
 
 ```bash

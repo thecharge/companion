@@ -205,6 +205,22 @@ Use with new repositories:
 - Set `sandbox.allow_direct_fallback: false` in production.
 - Set a non-default `COMPANION_SECRET`.
 
+Sandbox image build commands:
+
+```bash
+docker build -t companion-sandbox:latest docker/sandbox
+# or
+podman build -t companion-sandbox:latest docker/sandbox
+# or
+nerdctl build -t companion-sandbox:latest docker/sandbox
+```
+
+Run server with strict docker sandbox mode:
+
+```bash
+COMPANION_SANDBOX_RUNTIME=docker bun run server
+```
+
 ## Slack and Telegram Usage
 
 Webhook endpoints:

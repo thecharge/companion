@@ -31,6 +31,11 @@ Recommended for production:
 - `sandbox.allow_direct_fallback: false`
 - Non-default `COMPANION_SECRET`
 
+Sandbox runtime note:
+- Default docker-compose server config sets `COMPANION_SANDBOX_RUNTIME=direct`.
+- In that setup, tool execution is not containerized by `SandboxExecutor`.
+- For true sandbox containers per tool call, run the server where Docker/Podman CLI and runtime are reachable and set runtime to `docker`/`podman`.
+
 ## Local Dev Workflow
 
 ```bash
