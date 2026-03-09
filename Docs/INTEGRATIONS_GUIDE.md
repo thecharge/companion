@@ -111,6 +111,35 @@ TELEGRAM_SECRET_TOKEN=<long-random-secret>
 TELEGRAM_REQUIRED_PASSPHRASE=<shared-passphrase>
 ```
 
+Integration option reference (verbose meanings):
+
+| Option | Location | Default | Description |
+| --- | --- | --- | --- |
+| Slack Enable Flag | `integrations.slack.enabled` / `SLACK_ENABLED` | `false` | Turns Slack webhook handling on or off. When disabled, endpoint returns not found. |
+| Slack Bot Token | `integrations.slack.bot_token` / `SLACK_BOT_TOKEN` | empty | OAuth bot token used to send replies back into Slack channels. |
+| Slack Signing Secret | `integrations.slack.signing_secret` / `SLACK_SIGNING_SECRET` | empty | Secret used to validate Slack request signatures (`x-slack-signature`). |
+| Slack Trusted User IDs | `integrations.slack.trusted_user_ids` | empty list | Allowlist of Slack sender user IDs permitted to trigger processing. |
+| Slack Trusted Channel IDs | `integrations.slack.trusted_channel_ids` | empty list | Allowlist of channel IDs where bot messages are accepted. |
+| Slack Trusted Team IDs | `integrations.slack.trusted_team_ids` | empty list | Allowlist of workspace/team IDs for inbound events. |
+| Slack Required Passphrase | `integrations.slack.required_passphrase` / `SLACK_REQUIRED_PASSPHRASE` | empty | Optional required message prefix for step-up trust control. |
+| Slack Runtime Mode Override | `integrations.slack.mode` / `SLACK_MODE` | unset (`balanced` in example env) | Optional per-integration mode override for sessions created from Slack events. |
+| Slack Session Title Template | `integrations.slack.default_session_title` | `Slack Session` | Default title assigned to sessions created by Slack messages. |
+| Slack Max Message Characters | `integrations.slack.max_message_chars` | `2000` | Character limit before message guard rejects/ignores unsafe or oversized payloads. |
+| Slack Max Events Per Minute | `integrations.slack.max_events_per_minute` | `30` | Per-channel ingress rate limit to control abuse/spam. |
+| Telegram Enable Flag | `integrations.telegram.enabled` / `TELEGRAM_ENABLED` | `false` | Turns Telegram webhook handling on or off. |
+| Telegram Bot Token | `integrations.telegram.bot_token` / `TELEGRAM_BOT_TOKEN` | empty | Bot API token used to post replies into Telegram chats. |
+| Telegram Webhook Secret | `integrations.telegram.secret_token` / `TELEGRAM_SECRET_TOKEN` | empty | Expected secret in `x-telegram-bot-api-secret-token` header. |
+| Telegram Trusted User IDs | `integrations.telegram.trusted_user_ids` | empty list | Allowlist of sender user IDs allowed to trigger processing. |
+| Telegram Trusted Chat IDs | `integrations.telegram.trusted_chat_ids` | empty list | Allowlist of chat IDs where bot processing is permitted. |
+| Telegram Required Passphrase | `integrations.telegram.required_passphrase` / `TELEGRAM_REQUIRED_PASSPHRASE` | empty | Optional required prefix users must include in messages. |
+| Telegram Runtime Mode Override | `integrations.telegram.mode` / `TELEGRAM_MODE` | unset (`balanced` in example env) | Optional per-integration mode override for Telegram-originated sessions. |
+| Telegram Session Title Template | `integrations.telegram.default_session_title` | `Telegram Session` | Default title assigned to sessions created by Telegram messages. |
+| Telegram Max Message Characters | `integrations.telegram.max_message_chars` | `2000` | Character limit before guard rejects/ignores oversized input. |
+| Telegram Max Events Per Minute | `integrations.telegram.max_events_per_minute` | `30` | Per-chat ingress rate limit for abuse protection. |
+
+For the complete global configuration matrix (all `companion.yaml` sections, env vars, runtime-only env vars, and override behavior), see:
+- `Docs/CONFIGURATION_GUIDE.md`
+
 ## Slack Setup (Detailed)
 
 1. Create a Slack app and bot user.
