@@ -119,6 +119,7 @@ export function ChatPane({
 
     if (ch === "/" && !focused) {
       setFocus(true);
+      setInput("/");
       return;
     }
 

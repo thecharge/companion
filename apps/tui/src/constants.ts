@@ -3,7 +3,64 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-export const SERVER = process.env.COMPANION_URL ?? "http://localhost:3000";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+function trimYamlValue(raw: string): string {
+  const noComment = raw.split("#")[0] ?? "";
+  return noComment.trim().replace(/^"|"$/g, "").replace(/^'|'$/g, "");
+}
+
+function resolveTemplate(value: string): string {
+  const match = value.match(/^\$\{([^}:]+):-([^}]*)\}$/);
+  if (!match) return value;
+  const envName = match[1] ?? "";
+  const fallback = match[2] ?? "";
+  return process.env[envName] ?? fallback;
+}
+
+function readServerFromCompanionYaml(): { host?: string; port?: string } {
+  try {
+    const raw = readFileSync(join(process.cwd(), "companion.yaml"), "utf8");
+    const lines = raw.split("\n");
+    let inServer = false;
+    let host = "";
+    let port = "";
+
+    for (const line of lines) {
+      if (!inServer) {
+        if (/^server:\s*$/.test(line)) inServer = true;
+        continue;
+      }
+
+      if (/^[^\s#].*:\s*$/.test(line)) break;
+      const kv = line.match(/^\s{2}(host|port):\s*(.+)$/);
+      if (!kv) continue;
+      const key = kv[1] ?? "";
+      const value = resolveTemplate(trimYamlValue(kv[2] ?? ""));
+      if (key === "host") host = value;
+      if (key === "port") port = value;
+    }
+
+    return { host, port };
+  } catch {
+    return {};
+  }
+}
+
+function resolveServerUrl(): string {
+  if (process.env.COMPANION_URL?.trim()) {
+    return process.env.COMPANION_URL;
+  }
+
+  const fromYaml = readServerFromCompanionYaml();
+  const hostRaw = process.env.COMPANION_HOST ?? fromYaml.host ?? "localhost";
+  const portRaw = process.env.COMPANION_PORT ?? fromYaml.port ?? "3000";
+  const host = hostRaw === "0.0.0.0" ? "localhost" : hostRaw;
+  return `http://${host}:${portRaw}`;
+}
+
+export const SERVER = resolveServerUrl();
 export const WS_URL = SERVER.replace(/^http/, "ws");
 export const SECRET = process.env.COMPANION_SECRET ?? "";
 export const VISIBLE_MESSAGES = 12;

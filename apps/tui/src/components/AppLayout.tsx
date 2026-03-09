@@ -3,6 +3,8 @@
  * Copyright (c) 2026 Companion contributors
  */
 
+import { existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { Box, Text } from "ink";
 import type React from "react";
 import { LOADER_FRAMES } from "../constants";
@@ -22,7 +24,9 @@ interface AppLayoutProps {
   task: ActiveTask | null;
   actionLog: LogEntry[];
   workingDir: string;
+  previousWorkingDir: string;
   setWorkingDir: (path: string) => void;
+  setPreviousWorkingDir: (path: string) => void;
   streaming: boolean;
   wsConnected: boolean;
   caps: Caps | null;
@@ -69,7 +73,9 @@ export const AppLayout = ({
   task,
   actionLog,
   workingDir,
+  previousWorkingDir,
   setWorkingDir,
+  setPreviousWorkingDir,
   streaming,
   wsConnected,
   caps,
@@ -115,17 +121,32 @@ export const AppLayout = ({
         active={pane === Pane.Chat}
         wsConnected={wsConnected}
         onSend={(text) => {
-          if (text === "/wd") {
+          const normalized = text.startsWith("/") ? text : `/${text}`;
+
+          if (normalized === "/wd") {
             addLogEntry(`working_dir ${workingDir}`);
             return;
           }
 
-          if (text.startsWith("/wd ")) {
-            const nextWorkingDir = text.slice(4).trim();
+          if (normalized.startsWith("/wd ")) {
+            const rawPath = normalized.slice(4).trim();
+            const nextWorkingDir = rawPath === "-" ? previousWorkingDir : resolve(rawPath || workingDir);
             if (!nextWorkingDir) {
+              addLogEntry("working_dir unchanged");
               return;
             }
 
+            if (!existsSync(nextWorkingDir)) {
+              addLogEntry(`working_dir not found ${nextWorkingDir}`);
+              return;
+            }
+
+            if (!statSync(nextWorkingDir).isDirectory()) {
+              addLogEntry(`working_dir not a directory ${nextWorkingDir}`);
+              return;
+            }
+
+            setPreviousWorkingDir(workingDir);
             setWorkingDir(nextWorkingDir);
             addLogEntry(`working_dir set ${nextWorkingDir}`);
             return;

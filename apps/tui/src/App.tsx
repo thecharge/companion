@@ -46,6 +46,7 @@ export const App = () => {
   const [caps, setCaps] = useState<Caps | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [workingDir, setWorkingDir] = useState(process.cwd());
+  const [previousWorkingDir, setPreviousWorkingDir] = useState(process.cwd());
   const [loaderFrameIndex, setLoaderFrameIndex] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -254,7 +255,9 @@ export const App = () => {
       task={task}
       actionLog={actionLog}
       workingDir={workingDir}
+      previousWorkingDir={previousWorkingDir}
       setWorkingDir={setWorkingDir}
+      setPreviousWorkingDir={setPreviousWorkingDir}
       streaming={streaming}
       wsConnected={wsConnected}
       caps={caps}

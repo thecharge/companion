@@ -6,7 +6,7 @@ import type { MemoryService } from "@companion/memory";
 import { loadSkillsDir, registerSkills } from "@companion/skills";
 import type { ToolRegistry } from "@companion/tools";
 import { AgentRunner } from "./agent-runner";
-import { hasSkillIntent } from "./patterns";
+import { hasFileTaskIntent, hasSkillIntent, hasSystemTaskIntent } from "./patterns";
 import { buildOrchestratorPrompt } from "./prompts";
 import {
   PENDING_SKILL_KEY,
@@ -41,6 +41,17 @@ function shouldConsiderSkillAcquisition(message: string, blackboard: Blackboard)
 
 function hasExplicitSkillIntent(message: string): boolean {
   return hasSkillIntent(message);
+}
+
+function inferForcedAgent(message: string, cfg: Config): string | null {
+  const engineer = cfg.agents.engineer;
+  if (!engineer) return null;
+
+  const hasRunShell = engineer.tools.includes("run_shell");
+  const hasWriteFile = engineer.tools.includes("write_file");
+  if (hasSystemTaskIntent(message) && hasRunShell) return "engineer";
+  if (hasFileTaskIntent(message) && (hasWriteFile || hasRunShell)) return "engineer";
+  return null;
 }
 
 export class SessionProcessor {
@@ -85,34 +96,43 @@ export class SessionProcessor {
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
     let decision: { action: string; target?: string; reason?: string };
-    const orchLLM = createLLMClient(orchCfg);
-    try {
-      const res = await orchLLM.chat({
-        messages: [
-          { role: "system", content: buildOrchestratorPrompt(runtimeCfg, this.registry, blackboard, mode) },
-          { role: "user", content: user_message },
-        ],
-        json_mode: orchCfg.provider === "ollama",
-        signal,
-      });
-      const raw = res.choices[0]?.message.content ?? "";
-      const cleaned = raw
-        .replace(/^```json\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
+    const forcedAgent = inferForcedAgent(user_message, runtimeCfg);
+    if (forcedAgent) {
+      decision = {
+        action: "run_agent",
+        target: forcedAgent,
+        reason: "heuristic: explicit system/file task requires tool-capable engineer",
+      };
+    } else {
+      const orchLLM = createLLMClient(orchCfg);
       try {
-        decision = JSON.parse(cleaned) as typeof decision;
-      } catch {
-        log.warn("Orchestrator non-JSON - defaulting to first configured agent", { raw: raw.slice(0, 80) });
-        const fallback = Object.keys(runtimeCfg.agents)[0] ?? "responder";
-        decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
+        const res = await orchLLM.chat({
+          messages: [
+            { role: "system", content: buildOrchestratorPrompt(runtimeCfg, this.registry, blackboard, mode) },
+            { role: "user", content: user_message },
+          ],
+          json_mode: orchCfg.provider === "ollama",
+          signal,
+        });
+        const raw = res.choices[0]?.message.content ?? "";
+        const cleaned = raw
+          .replace(/^```json\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .trim();
+        try {
+          decision = JSON.parse(cleaned) as typeof decision;
+        } catch {
+          log.warn("Orchestrator non-JSON - defaulting to first configured agent", { raw: raw.slice(0, 80) });
+          const fallback = Object.keys(runtimeCfg.agents)[0] ?? "responder";
+          decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
+        }
+      } catch (e) {
+        const msg = String(e);
+        if (signal?.aborted || msg.includes("AbortError")) {
+          return { reply: "", blackboard, stopped_reason: "cancelled" };
+        }
+        throw e;
       }
-    } catch (e) {
-      const msg = String(e);
-      if (signal?.aborted || msg.includes("AbortError")) {
-        return { reply: "", blackboard, stopped_reason: "cancelled" };
-      }
-      throw e;
     }
 
     bus.emit({
