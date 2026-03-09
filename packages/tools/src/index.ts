@@ -6,7 +6,14 @@
 
 import type { Config } from "@companion/config";
 import type { DB } from "@companion/db";
-import { createListDirTool, createReadFileTool, createSearchHistoryTool, createWriteFileTool } from "./core-tools";
+import {
+  createListDirTool,
+  createReadFileTool,
+  createRepoMapTool,
+  createSearchCodeTool,
+  createSearchHistoryTool,
+  createWriteFileTool,
+} from "./core-tools";
 import { createProviderMatrixTool, createRuntimePostureTool } from "./ops-tools";
 import { ToolRegistry } from "./registry";
 import { SandboxExecutor, createRunShellTool, createRunTestsTool } from "./sandbox";
@@ -23,6 +30,8 @@ export function createToolRegistry(cfg: Config, _db: DB): { registry: ToolRegist
   registry.register(createReadFileTool());
   registry.register(createWriteFileTool());
   registry.register(createListDirTool());
+  registry.register(createSearchCodeTool());
+  registry.register(createRepoMapTool());
   registry.register(createSearchHistoryTool());
   registry.register(createRunShellTool(sandbox));
   registry.register(createWebFetchTool());

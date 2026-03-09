@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Pane, SessionMode, SessionStatus, type Session } from "../types";
+import { Pane, type Session, SessionMode, SessionStatus } from "../types";
 import { handleGlobalInput } from "./global-input-handler";
 
 const makeSession = (): Session => ({

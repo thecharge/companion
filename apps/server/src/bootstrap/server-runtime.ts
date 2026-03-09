@@ -8,8 +8,8 @@ import { HeaderName, HeaderValue, HttpStatus, QueryParam } from "../constants/ht
 import { isAuthorizedRequest } from "../middleware/auth";
 import { unauthorizedResponse } from "../middleware/http-responses";
 import { withSecurityHeaders } from "../security";
-import type { AppContext } from "./app-context";
 import { SessionWebSocketHub } from "../ws/session-websocket-hub";
+import type { AppContext } from "./app-context";
 
 const log = new Logger("server");
 

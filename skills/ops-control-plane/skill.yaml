@@ -1,0 +1,54 @@
+name: ops-control-plane
+version: "1.0.0"
+description: "Operational runbooks for incident triage, deployment checks, and service health evidence."
+tags: [operations, reliability, sre]
+
+tools:
+  - name: incident_triage
+    description: "Generate a first-response incident triage checklist with severity framing."
+    parameters:
+      symptom:
+        type: string
+        description: "Observed failure symptom"
+        required: true
+      service:
+        type: string
+        description: "Affected service"
+        required: true
+    timeout: 20
+    script: |
+      set -eu
+      symptom="${COMPANION_ARG_SYMPTOM:-unknown symptom}"
+      service="${COMPANION_ARG_SERVICE:-companion}"
+      cat <<EOF
+      Incident Triage: ${service}
+      Symptom: ${symptom}
+
+      1) Classify severity (SEV-1..SEV-4) based on user impact and duration.
+      2) Confirm blast radius: sessions, APIs, models, sandbox, storage.
+      3) Capture evidence: /health, /metrics, audit events, recent deploys.
+      4) Execute containment: rollback, traffic reduction, feature flags.
+      5) Assign incident commander and update communication cadence.
+      6) Track ETA and next checkpoint in incident log.
+      EOF
+
+  - name: release_readiness
+    description: "Print a release gate checklist tied to quality and compliance controls."
+    parameters:
+      change_scope:
+        type: string
+        description: "High-level scope of release"
+        required: true
+    timeout: 20
+    script: |
+      set -eu
+      scope="${COMPANION_ARG_CHANGE_SCOPE:-unspecified scope}"
+      cat <<EOF
+      Release Readiness for: ${scope}
+      - Lint/typecheck/tests green
+      - Runtime and provider proof commands executed
+      - Rollback plan verified
+      - Issue templates and security reporting paths present
+      - Audit event stream confirmed for critical flows
+      - Deployment notes and operational ownership documented
+      EOF

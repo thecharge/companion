@@ -3,8 +3,8 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { Pane, type Session } from "../types";
 import type React from "react";
+import { Pane, type Session } from "../types";
 
 interface InputHandlerParams {
   pane: Pane;

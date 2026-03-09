@@ -1,0 +1,33 @@
+name: compliance-readiness
+version: "1.0.0"
+description: "Assesses documented control coverage and highlights readiness gaps."
+tags: [compliance, readiness, audit]
+
+tools:
+  - name: compliance_gap_report
+    description: "Generate a quick compliance gap report from project docs."
+    parameters:
+      focus:
+        type: string
+        description: "Control family focus (soc2, iso27001, pci, all)"
+        required: false
+    timeout: 20
+    script: |
+      set -eu
+      ROOT="${WORKING_DIR:-.}"
+      FOCUS="${COMPANION_ARG_FOCUS:-all}"
+      FILE="$ROOT/Docs/COMPLIANCE_READINESS.md"
+
+      if [ ! -f "$FILE" ]; then
+        echo "Missing compliance document: $FILE"
+        exit 1
+      fi
+
+      echo "Compliance focus: $FOCUS"
+      echo "Document: $FILE"
+      echo ""
+      echo "Coverage checks:"
+      grep -qi 'audit' "$FILE" && echo "- audit: present" || echo "- audit: missing"
+      grep -qi 'rbac\|access control' "$FILE" && echo "- access control: present" || echo "- access control: missing"
+      grep -qi 'incident' "$FILE" && echo "- incident response: present" || echo "- incident response: missing"
+      grep -qi 'vulnerability' "$FILE" && echo "- vulnerability management: present" || echo "- vulnerability management: missing"

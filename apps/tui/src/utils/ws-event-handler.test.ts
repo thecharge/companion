@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from "bun:test";
 import type React from "react";
+import { type ActiveTask, type Msg, TaskStatus } from "../types";
 import { handleWebSocketEnvelope } from "./ws-event-handler";
-import { TaskStatus, type ActiveTask, type Msg } from "../types";
 
 describe("ws event handler", () => {
   test("updates task on agent_start", () => {

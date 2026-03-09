@@ -4,13 +4,13 @@
  */
 
 import { Box, Text } from "ink";
-import React from "react";
+import type React from "react";
 import { LOADER_FRAMES } from "../constants";
+import type { SessionRepository } from "../sdk/session-repository";
+import { type ActiveTask, type Caps, type LogEntry, type Msg, Pane, type Session } from "../types";
 import { CapabilitiesPane } from "./CapabilitiesPane";
 import { ChatPane } from "./ChatPane";
 import { SessionList } from "./SessionList";
-import { type ActiveTask, type Caps, type LogEntry, type Msg, Pane, type Session } from "../types";
-import type { SessionRepository } from "../sdk/session-repository";
 
 interface AppLayoutProps {
   pane: Pane;

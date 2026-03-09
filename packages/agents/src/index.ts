@@ -45,6 +45,36 @@ import {
 
 const log = new Logger("agents");
 
+export type WorkflowTrack = "standard" | "product_delivery" | "operations";
+
+export function detectWorkflowTrack(message: string): WorkflowTrack {
+  const q = message.toLowerCase();
+  const productSignals = [
+    "prd",
+    "product requirement",
+    "requirements",
+    "roadmap",
+    "feature spec",
+    "acceptance criteria",
+    "delivery plan",
+  ];
+  const opsSignals = [
+    "incident",
+    "outage",
+    "operations",
+    "runbook",
+    "sre",
+    "deployment",
+    "rollback",
+    "release",
+    "postmortem",
+  ];
+
+  if (opsSignals.some((signal) => q.includes(signal))) return "operations";
+  if (productSignals.some((signal) => q.includes(signal))) return "product_delivery";
+  return "standard";
+}
+
 function shouldConsiderSkillAcquisition(message: string, blackboard: Blackboard): boolean {
   const q = message.toLowerCase();
   const explicitIntent =
@@ -520,6 +550,11 @@ export class SessionProcessor {
       };
     }
 
+    const workflowTrack = detectWorkflowTrack(user_message);
+    if (workflowTrack !== "standard") {
+      return this.runWorkflowTrack(workflowTrack, runtimeCfg, params);
+    }
+
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
     // ── Step 1: orchestrator picks one configured agent ─────────────────────
@@ -743,6 +778,75 @@ export class SessionProcessor {
     }
   }
 
+  private workflowPlan(track: WorkflowTrack, cfg: Config): string[] {
+    const productPlan = ["planner", "prd_designer", "delivery_manager", "engineer", "responder"];
+    const opsPlan = ["planner", "operations_commander", "analyst", "engineer", "responder"];
+    const preferred = track === "product_delivery" ? productPlan : opsPlan;
+    const plan = preferred.filter((name) => Boolean(cfg.agents[name]));
+    if (plan.length) return plan;
+
+    const fallback = ["analyst", "engineer", "responder"].filter((name) => Boolean(cfg.agents[name]));
+    return fallback.length ? fallback : Object.keys(cfg.agents).slice(0, 1);
+  }
+
+  private async runWorkflowTrack(
+    track: WorkflowTrack,
+    runtimeCfg: Config,
+    params: OrchestratorParams,
+  ): Promise<AgentRunResult> {
+    const { session_id, blackboard, user_message, history, working_dir, signal } = params;
+    const plan = this.workflowPlan(track, runtimeCfg);
+    if (!plan.length) {
+      return { reply: "No configured agents available for workflow execution.", blackboard, stopped_reason: "error" };
+    }
+
+    blackboard.appendDecision(0, "workflow_track", track, plan.join(" -> "));
+    let stagePrompt = user_message;
+    let finalReply = "";
+
+    for (let i = 0; i < plan.length; i++) {
+      const agentName = plan[i] ?? "responder";
+      bus.emit({
+        type: "orchestrator_decision",
+        session_id,
+        ts: new Date(),
+        payload: { round: i + 1, action: "run_agent", target: agentName, track },
+      });
+
+      const runner = new AgentRunner(agentName, runtimeCfg, this.registry, this.memory, this.db);
+      const result = await runner.run({
+        session_id,
+        blackboard,
+        user_message: stagePrompt,
+        history,
+        working_dir,
+        signal,
+      });
+
+      if (result.stopped_reason === "cancelled") return { reply: "", blackboard, stopped_reason: "cancelled" };
+      if (result.stopped_reason === "error") {
+        return {
+          reply: result.reply || `Workflow agent ${agentName} failed`,
+          blackboard,
+          stopped_reason: "error",
+        };
+      }
+
+      if (result.reply) {
+        finalReply = result.reply;
+        blackboard.appendObservation(`[${agentName}] ${result.reply.slice(0, 500)}`);
+        stagePrompt = [
+          `Workflow track: ${track}`,
+          `Original request: ${user_message}`,
+          `Latest ${agentName} output:\n${result.reply}`,
+          "Continue with your lane and handoff cleanly to the next agent.",
+        ].join("\n\n");
+      }
+    }
+
+    return { reply: finalReply, blackboard, stopped_reason: "done" };
+  }
+
   private runtimeConfig(mode: string): Config {
     if (mode === "local") return this.cfg;
 
@@ -758,16 +862,32 @@ export class SessionProcessor {
 
     if (mode === "balanced") {
       if (has("local")) clone.orchestrator.model = "local";
-      if (has("smart") && clone.agents.analyst) clone.agents.analyst.model = "smart";
-      if (has("smart") && clone.agents.engineer) clone.agents.engineer.model = "smart";
+      for (const name of [
+        "analyst",
+        "planner",
+        "engineer",
+        "prd_designer",
+        "delivery_manager",
+        "operations_commander",
+      ]) {
+        if (has("smart") && clone.agents[name]) clone.agents[name].model = "smart";
+      }
       if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
       return clone;
     }
 
     if (mode === "cloud") {
       if (has("smart")) clone.orchestrator.model = "smart";
-      if (has("smart") && clone.agents.analyst) clone.agents.analyst.model = "smart";
-      if (has("smart") && clone.agents.engineer) clone.agents.engineer.model = "smart";
+      for (const name of [
+        "analyst",
+        "planner",
+        "engineer",
+        "prd_designer",
+        "delivery_manager",
+        "operations_commander",
+      ]) {
+        if (has("smart") && clone.agents[name]) clone.agents[name].model = "smart";
+      }
       if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
       return clone;
     }

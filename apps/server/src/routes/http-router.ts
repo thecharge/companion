@@ -4,9 +4,9 @@
  */
 
 import { SessionStatus } from "@companion/core";
+import type { AppContext } from "../bootstrap/app-context";
 import { HttpMethod, QueryParam, RoutePath } from "../constants/http";
 import { notFoundResponse } from "../middleware/http-responses";
-import type { AppContext } from "../bootstrap/app-context";
 import { SessionMessageService } from "../services/session-message-service";
 import { handleSessionRoutes } from "./session-routes";
 

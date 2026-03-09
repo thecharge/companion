@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { EventType, type CompanionEvent, bus, type SessionId } from "@companion/core";
+import { type CompanionEvent, EventType, type SessionId, bus } from "@companion/core";
 import { Logger } from "@companion/core";
 
 const log = new Logger("server.websocket");

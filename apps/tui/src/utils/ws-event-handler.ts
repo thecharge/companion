@@ -3,9 +3,9 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { WS_MESSAGE_TYPE } from "../constants";
-import { TaskStatus, type Msg, type SyncStatePayload, type WsEnvelope } from "../types";
 import type React from "react";
+import { WS_MESSAGE_TYPE } from "../constants";
+import { type Msg, type SyncStatePayload, TaskStatus, type WsEnvelope } from "../types";
 
 interface HandlerParams {
   data: string;

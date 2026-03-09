@@ -59,15 +59,47 @@ agents:
   analyst:
     model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Reads and analyses documents, code, and data. Produces structured observations."
-    tools:       [read_file, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills, runtime_posture, provider_matrix]
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills, runtime_posture, provider_matrix, incident_triage, release_readiness]
     reads_from:  [goal, observations]
     writes_to:   [observations]
     max_turns:   6
 
+  planner:
+    model:       local
+    description: "Read-only planning agent for architecture, risk, and staged execution design."
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, web_fetch, decomposition_plan, runtime_posture]
+    reads_from:  [goal, observations, decisions]
+    writes_to:   [decisions, observations]
+    max_turns:   6
+
+  prd_designer:
+    model:       local
+    description: "Builds PRDs, acceptance criteria, and product scope boundaries before implementation."
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, web_fetch, prd_outline, decomposition_plan]
+    reads_from:  [goal, observations]
+    writes_to:   [observations, decisions]
+    max_turns:   8
+
+  delivery_manager:
+    model:       local
+    description: "Turns requirements into phased delivery plans with explicit release and risk controls."
+    tools:       [read_file, search_history, decomposition_plan, release_readiness, runtime_posture, provider_matrix]
+    reads_from:  [goal, observations, decisions]
+    writes_to:   [decisions, observations]
+    max_turns:   8
+
+  operations_commander:
+    model:       local
+    description: "Owns operational orchestration, incident triage, release gates, and rollback posture."
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, incident_triage, release_readiness, runtime_posture]
+    reads_from:  [goal, observations, decisions]
+    writes_to:   [decisions, observations]
+    max_turns:   8
+
   engineer:
     model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
-    tools:       [read_file, write_file, list_dir, run_shell, run_tests, search_history, create_skill_template]
+    tools:       [read_file, write_file, list_dir, repo_map, search_code, run_shell, run_tests, search_history, create_skill_template, decomposition_plan]
     reads_from:  [goal, observations, artifacts]
     writes_to:   [artifacts, observations]
     max_turns:   12

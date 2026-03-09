@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { Config } from "@companion/config";
 import { Blackboard, asSession } from "@companion/core";
 import { ToolRegistry } from "@companion/tools";
-import { SessionProcessor } from "./index";
+import { SessionProcessor, detectWorkflowTrack } from "./index";
 import { PENDING_SKILL_KEY, type ProposedSkillSpec } from "./skill-acquisition";
 
 function createTestConfig(): Config {
@@ -205,5 +205,11 @@ describe("agents exports", () => {
       const scratch = bb.read("scratchpad") as Record<string, unknown>;
       expect(scratch[PENDING_SKILL_KEY]).toBeDefined();
     }
+  });
+
+  test("detects workflow tracks for product and operations intents", () => {
+    expect(detectWorkflowTrack("Create a PRD and delivery plan for feature rollout")).toBe("product_delivery");
+    expect(detectWorkflowTrack("Investigate outage and create incident runbook")).toBe("operations");
+    expect(detectWorkflowTrack("answer this quick question")).toBe("standard");
   });
 });

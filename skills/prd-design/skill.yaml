@@ -1,0 +1,58 @@
+name: prd-design
+version: "1.0.0"
+description: "Generates structured PRD sections and acceptance criteria from goals and constraints."
+tags: [product, prd, planning]
+
+tools:
+  - name: prd_outline
+    description: "Create a PRD outline with requirements, non-goals, risks, and acceptance criteria."
+    parameters:
+      feature:
+        type: string
+        description: "Feature or initiative name"
+        required: true
+      users:
+        type: string
+        description: "Target users"
+        required: true
+      constraints:
+        type: string
+        description: "Technical, compliance, and timeline constraints"
+        required: false
+    timeout: 20
+    script: |
+      set -eu
+      feature="${COMPANION_ARG_FEATURE:-unnamed feature}"
+      users="${COMPANION_ARG_USERS:-unspecified users}"
+      constraints="${COMPANION_ARG_CONSTRAINTS:-none listed}"
+      cat <<EOF
+      # PRD: ${feature}
+
+      ## Problem Statement
+      Define the user and business pain this solves for ${users}.
+
+      ## Goals
+      - Deliver measurable user value for ${users}
+      - Keep implementation aligned with constraints: ${constraints}
+
+      ## Non-Goals
+      - Avoid scope creep unrelated to the stated goals
+      - Defer non-critical enhancements to follow-up milestones
+
+      ## Functional Requirements
+      - Define user journeys and expected system behavior
+      - Define API contracts and error handling behavior
+
+      ## Non-Functional Requirements
+      - Security and compliance checks integrated into CI/CD
+      - Reliability SLOs and observability acceptance gates
+
+      ## Risks and Mitigations
+      - Risk: ambiguous requirements
+      - Mitigation: explicit acceptance criteria and design review
+
+      ## Acceptance Criteria
+      - All primary flows are tested and passing
+      - Lint, typecheck, tests, and readiness proofs pass
+      - Rollback and incident procedures documented
+      EOF

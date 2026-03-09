@@ -3,9 +3,9 @@
  * Copyright (c) 2026 Companion contributors
  */
 
+import type React from "react";
 import type { CompanionApiClient } from "../sdk/companion-api-client";
 import type { Msg } from "../types";
-import type React from "react";
 
 interface StreamParams {
   apiClient: CompanionApiClient;

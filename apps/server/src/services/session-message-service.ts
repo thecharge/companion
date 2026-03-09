@@ -3,14 +3,14 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { type ConfigStore, type Config } from "@companion/config";
-import { Blackboard, EventType, Logger, MessageRole, asMessage, type SessionId, bus, newId } from "@companion/core";
+import { SessionProcessor } from "@companion/agents";
+import type { Config, ConfigStore } from "@companion/config";
+import { Blackboard, EventType, Logger, MessageRole, type SessionId, asMessage, bus, newId } from "@companion/core";
 import { ConcurrencyError, type DB } from "@companion/db";
 import type { ChatMessage, OAIToolCall } from "@companion/llm";
 import { createLLMClient } from "@companion/llm";
-import { type MemoryService } from "@companion/memory";
-import { SessionProcessor } from "@companion/agents";
-import { type ToolRegistry } from "@companion/tools";
+import type { MemoryService } from "@companion/memory";
+import type { ToolRegistry } from "@companion/tools";
 
 const log = new Logger("server.session-service");
 

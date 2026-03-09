@@ -6,14 +6,15 @@
 import {
   EventType,
   MessageRole,
-  SessionStatus,
-  asMessage,
-  asSession,
   type SessionId,
   type SessionMode,
+  type SessionStatus,
+  asMessage,
+  asSession,
   bus,
   newId,
 } from "@companion/core";
+import type { AppContext } from "../bootstrap/app-context";
 import {
   HeaderName,
   HeaderValue,
@@ -24,9 +25,8 @@ import {
   RoutePath,
 } from "../constants/http";
 import { badRequestResponse, invalidBodyResponse, notFoundResponse } from "../middleware/http-responses";
-import type { AppContext } from "../bootstrap/app-context";
 import type { AuditLogService } from "../services/audit-log-service";
-import { SessionMessageService } from "../services/session-message-service";
+import type { SessionMessageService } from "../services/session-message-service";
 
 interface SessionPostBody {
   title?: string;

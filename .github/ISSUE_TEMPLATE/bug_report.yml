@@ -1,0 +1,28 @@
+name: Bug Report
+description: Report a defect or behavioral regression
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened and what should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps To Reproduce
+      description: Provide deterministic steps
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version/Commit
+      description: Git SHA or release version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Include server/tui logs and audit event snippets where possible

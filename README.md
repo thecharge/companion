@@ -43,7 +43,7 @@ cp .env.example .env
 
 bun install
 bun run pull      # pulls default local model
-ollama pull nomic-embed-text:latest 
+ollama pull nomic-embed-text:latest
 ollama pull qwen3:1.7b
 ```
 
@@ -169,6 +169,7 @@ packages/
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
 - Persistent audit events are written to `./data/audit-events.ndjson` (override: `COMPANION_AUDIT_LOG_PATH`) and exposed via `/audit/events`.
 - Shared enum-like constants now exist in `packages/core` for key literals.
+- Multi-lane workflow orchestration is available for product-delivery and operations tracks.
 
 ## Build, Test, Typecheck
 
@@ -202,6 +203,9 @@ Lint policy note:
   - `.github/workflows/ci.yml`
   - `.github/workflows/dependency-review.yml`
 - Readiness proof workflow: `.github/workflows/proof.yml`
+- Git pre-commit gate: `.githooks/pre-commit` (format + lint + typecheck + tests)
+- Hook bootstrap script: `scripts/setup-hooks.sh` (wired via `bun run prepare`)
+- VS Code standards: `.vscode/settings.json` and `.vscode/extensions.json`
 
 ## Readiness Proof Commands
 

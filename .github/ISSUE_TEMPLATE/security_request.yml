@@ -1,0 +1,28 @@
+name: Security Request
+description: Request a security hardening improvement (non-vulnerability disclosure)
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: "For active vulnerabilities or sensitive disclosures, do not file a public issue. Follow SECURITY.md private reporting guidance."
+  - type: textarea
+    id: control
+    attributes:
+      label: Control Request
+      description: Which security control should be added or improved?
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk Context
+      description: Threat, impact, and exploitability
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation Plan
+      description: How can this control be tested and evidenced?
+    validations:
+      required: true

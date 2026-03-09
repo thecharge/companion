@@ -141,3 +141,93 @@ export function createSearchHistoryTool(): ToolDefinition {
     },
   };
 }
+
+export function createSearchCodeTool(): ToolDefinition {
+  return {
+    schema: {
+      type: "function",
+      function: {
+        name: "search_code",
+        description: "Search source files using ripgrep for symbols, snippets, or errors.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Regex or plain text query" },
+            path: { type: "string", description: "Directory path relative to working directory. Default: ." },
+            limit: { type: "number", description: "Maximum result lines. Default: 50" },
+          },
+          required: ["query"],
+        },
+      },
+    },
+    handler: async (args, ctx) => {
+      const query = String(args["query"] ?? "").trim();
+      const rel = String(args["path"] ?? ".");
+      const limit = Math.max(1, Math.min(500, Number(args["limit"] ?? 50)));
+      if (!query) return "Error: query is required";
+
+      const abs = safePath(ctx.working_dir, rel);
+      const proc = Bun.spawn(["rg", "-n", "--no-heading", "--hidden", query, abs], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      await proc.exited;
+
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      if (proc.exitCode !== 0 && proc.exitCode !== 1) {
+        return `Error running rg: ${stderr || "unknown error"}`;
+      }
+
+      const lines = stdout.split("\n").filter(Boolean).slice(0, limit);
+      if (!lines.length) return `No code results for: ${query}`;
+      return lines.join("\n");
+    },
+  };
+}
+
+export function createRepoMapTool(): ToolDefinition {
+  return {
+    schema: {
+      type: "function",
+      function: {
+        name: "repo_map",
+        description: "Summarise repository structure with shallow tree for fast orientation.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Directory path relative to working directory. Default: ." },
+            depth: { type: "number", description: "Traversal depth (1-5). Default: 2" },
+            limit: { type: "number", description: "Maximum displayed entries. Default: 200" },
+          },
+          required: [],
+        },
+      },
+    },
+    handler: async (args, ctx) => {
+      const rel = String(args["path"] ?? ".");
+      const depth = Math.max(1, Math.min(5, Number(args["depth"] ?? 2)));
+      const limit = Math.max(20, Math.min(1000, Number(args["limit"] ?? 200)));
+      const abs = safePath(ctx.working_dir, rel);
+      const { readdir } = await import("node:fs/promises");
+      const output: string[] = [];
+
+      const walk = async (base: string, level: number): Promise<void> => {
+        if (output.length >= limit || level > depth) return;
+        const entries = await readdir(base, { withFileTypes: true });
+        for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+          if (output.length >= limit) return;
+          if (entry.name === ".git" || entry.name === "node_modules") continue;
+          const prefix = "  ".repeat(level - 1);
+          output.push(`${prefix}${entry.isDirectory() ? "d" : "f"} ${entry.name}`);
+          if (entry.isDirectory()) {
+            await walk(join(base, entry.name), level + 1);
+          }
+        }
+      };
+
+      await walk(abs, 1);
+      return output.length ? output.join("\n") : "(empty repository view)";
+    },
+  };
+}

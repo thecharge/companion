@@ -40,6 +40,18 @@ bun run typecheck
 bun run test
 ```
 
+Install git hooks (automatically run on `bun install` via `prepare`):
+
+```bash
+bun run prepare
+```
+
+Pre-commit hook gates:
+- `bun run format`
+- `bun run lint`
+- `bun run typecheck`
+- `bun run test`
+
 Generate runtime and provider proof reports:
 
 ```bash
@@ -86,12 +98,57 @@ bun run readiness
 3. Add tests in `packages/tools/src/index.test.ts`.
 4. Add docs/examples.
 
+High-usage built-ins (recommended defaults):
+- `repo_map`: fast repository topology snapshot.
+- `search_code`: ripgrep-backed code discovery.
+- `runtime_posture`: runtime hardening posture.
+- `provider_matrix`: provider alias/auth readiness matrix.
+
 ## Adding a New Skill
 
 1. Create `skills/<name>/skill.yaml`.
 2. Define tool schema and script.
 3. Add tool name to an agent in `companion.yaml`.
 4. If created through the acquisition loop, it is loaded immediately; manual file additions are loaded on next startup.
+
+Complex lane-oriented skills currently bundled:
+- `prd-design` (`prd_outline`)
+- `ops-control-plane` (`incident_triage`, `release_readiness`)
+- `subagent-coordination` (`decomposition_plan`)
+
+## Coding Guidelines
+
+- Keep business logic in services/orchestration layers, not transport handlers.
+- Prefer small functions with explicit input/output contracts.
+- Avoid hardcoded policy strings when shared constants or config is available.
+- Use early returns for guard conditions and error paths.
+- Add tests for any new workflow branch, tool registration, or config remap behavior.
+- Keep app-layer files under project limits and split by domain concern.
+
+## Branch and Commit Guidelines
+
+- Branch naming: `feat/<scope>`, `fix/<scope>`, `chore/<scope>`.
+- Commit style: imperative, scoped summary and concise body.
+- Include evidence in PRs: lint/typecheck/test/proof outputs.
+- Require issue template linkage for bugs/features/security changes.
+
+## VS Code Standards
+
+- Workspace settings in `.vscode/settings.json` enforce:
+	- format on save,
+	- Biome as default formatter,
+	- organize imports and fix-all on save,
+	- clean newline/whitespace defaults.
+- Recommended extensions in `.vscode/extensions.json`.
+
+## Orchestration Tracks
+
+The orchestrator supports explicit workflow tracks in addition to standard routing:
+- `product_delivery`: `planner -> prd_designer -> delivery_manager -> engineer -> responder`
+- `operations`: `planner -> operations_commander -> analyst -> engineer -> responder`
+- `standard`: existing single-route orchestration + responder synthesis
+
+Track selection is intent-driven (`packages/agents/src/index.ts`) and emits decision events for each stage.
 
 ## Brownfield Integration Playbook
 

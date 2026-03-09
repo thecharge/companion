@@ -4,13 +4,13 @@
  */
 
 import { SessionProcessor } from "@companion/agents";
-import { ConfigStore, loadConfig, type Config } from "@companion/config";
-import { Logger, bus, type SessionId } from "@companion/core";
-import { createDB, type DB } from "@companion/db";
+import { type Config, ConfigStore, loadConfig } from "@companion/config";
+import { Logger, type SessionId, bus } from "@companion/core";
+import { type DB, createDB } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
 import { MemoryService, SqliteVecStore } from "@companion/memory";
-import { loadSkillsDir, registerSkills, type Skill } from "@companion/skills";
-import { createToolRegistry, type ToolRegistry, type SandboxExecutor } from "@companion/tools";
+import { type Skill, loadSkillsDir, registerSkills } from "@companion/skills";
+import { type SandboxExecutor, type ToolRegistry, createToolRegistry } from "@companion/tools";
 import { AuditLogService } from "../services/audit-log-service";
 import { runStartupChecks } from "../startup-checks";
 

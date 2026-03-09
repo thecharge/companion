@@ -1,0 +1,81 @@
+name: provider-readiness
+version: "1.0.0"
+description: "Checks provider alias and key readiness from runtime configuration."
+tags: [llm, providers, readiness]
+
+tools:
+  - name: provider_readiness_report
+    description: "Summarize configured model aliases and provider auth readiness."
+    parameters:
+      config_path:
+        type: string
+        description: "Path to config YAML relative to working dir"
+        required: false
+    timeout: 25
+    script: |
+      set -eu
+      ROOT="${WORKING_DIR:-.}"
+      CONFIG_PATH="${COMPANION_ARG_CONFIG_PATH:-companion.yaml}"
+      FILE="$ROOT/$CONFIG_PATH"
+
+      if [ ! -f "$FILE" ]; then
+        echo "Missing config: $FILE"
+        exit 1
+      fi
+
+      echo "Provider readiness matrix:"
+      in_models=0
+      alias=""
+      provider="unknown"
+      api_key=""
+
+      while IFS= read -r line; do
+        case "$line" in
+          models:)
+            in_models=1
+            continue
+            ;;
+        esac
+
+        if [ "$in_models" -eq 0 ]; then
+          continue
+        fi
+
+        case "$line" in
+          [![:space:]#]*:)
+            break
+            ;;
+          "  "[a-zA-Z0-9_-]*:)
+            if [ -n "$alias" ]; then
+              if [ -n "$api_key" ]; then
+                echo "- $alias: provider=$provider, api_key_present=true"
+              else
+                echo "- $alias: provider=$provider, api_key_present=false"
+              fi
+            fi
+            alias="${line#  }"
+            alias="${alias%:}"
+            provider="unknown"
+            api_key=""
+            ;;
+          "    provider:"*)
+            provider="${line#    provider:}"
+            provider="$(echo "$provider" | sed 's/#.*$//' | tr -d '"' | xargs)"
+            ;;
+          "    api_key:"*)
+            api_key="${line#    api_key:}"
+            api_key="$(echo "$api_key" | sed 's/#.*$//' | xargs)"
+            case "$api_key" in
+              ""|\$\{*) api_key="" ;;
+            esac
+            ;;
+        esac
+      done < "$FILE"
+
+      if [ -n "$alias" ]; then
+        if [ -n "$api_key" ]; then
+          echo "- $alias: provider=$provider, api_key_present=true"
+        else
+          echo "- $alias: provider=$provider, api_key_present=false"
+        fi
+      fi

@@ -5,7 +5,7 @@
 
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { EventType, type CompanionEvent, type SessionId } from "@companion/core";
+import { type CompanionEvent, EventType, type SessionId } from "@companion/core";
 
 export interface AuditEventRecord {
   timestamp: string;

@@ -61,7 +61,20 @@ bun run lint && bun run typecheck && bun run test && bun run readiness
 
 Use workflow logs and artifacts as objective evidence during release reviews.
 
-## 5) Compliance Scope Boundary
+## 5) Developer Guardrail Evidence
+
+- Pre-commit gate: `.githooks/pre-commit`
+- Hook setup script: `scripts/setup-hooks.sh`
+- VS Code enforcement: `.vscode/settings.json`
+
+Verify locally:
+
+```bash
+bash scripts/setup-hooks.sh
+git config --get core.hooksPath
+```
+
+## 6) Compliance Scope Boundary
 
 Code-level proof can demonstrate:
 - static and runtime controls present in this repository,

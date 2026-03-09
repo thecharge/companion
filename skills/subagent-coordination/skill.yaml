@@ -1,0 +1,42 @@
+name: subagent-coordination
+version: "1.0.0"
+description: "Coordination patterns for decomposing complex work into multi-agent execution stages."
+tags: [orchestration, subagents, workflow]
+
+tools:
+  - name: decomposition_plan
+    description: "Create an execution plan split into subagent lanes with dependencies."
+    parameters:
+      objective:
+        type: string
+        description: "Primary objective to decompose"
+        required: true
+      lanes:
+        type: string
+        description: "Comma-separated lanes (e.g. product,engineering,ops)"
+        required: false
+    timeout: 20
+    script: |
+      set -eu
+      objective="${COMPANION_ARG_OBJECTIVE:-unspecified objective}"
+      lanes="${COMPANION_ARG_LANES:-product,engineering,ops}"
+      cat <<EOF
+      Subagent Decomposition Plan
+      Objective: ${objective}
+      Lanes: ${lanes}
+
+      Stage 1: Discover
+      - Product lane: requirements and acceptance criteria
+      - Engineering lane: architecture and constraints
+      - Ops lane: risks, runbooks, and release controls
+
+      Stage 2: Build
+      - Engineering lane: implementation and tests
+      - Product lane: PRD updates and scope control
+      - Ops lane: deployment and observability checks
+
+      Stage 3: Verify
+      - Run lint/typecheck/test/readiness proofs
+      - Validate rollback and incident playbooks
+      - Publish delivery report and follow-up backlog
+      EOF

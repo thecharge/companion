@@ -3,8 +3,8 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { HttpClient } from "./http-client";
 import type { Caps, Msg, Session } from "../types";
+import type { HttpClient } from "./http-client";
 
 export interface CreateSessionInput {
   title: string;

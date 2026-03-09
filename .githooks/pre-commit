@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[pre-commit] formatting..."
+bun run format
+
+echo "[pre-commit] staging formatter changes..."
+git add -A
+
+echo "[pre-commit] lint..."
+bun run lint
+
+echo "[pre-commit] typecheck..."
+bun run typecheck
+
+echo "[pre-commit] tests..."
+bun run test
+
+echo "[pre-commit] all checks passed"
