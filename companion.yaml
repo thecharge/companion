@@ -170,6 +170,10 @@ integrations:
     enabled: ${SLACK_ENABLED:-false}
     bot_token: ${SLACK_BOT_TOKEN:-}
     signing_secret: ${SLACK_SIGNING_SECRET:-}
+    trusted_user_ids: []      # e.g. ["U01234567"]
+    trusted_channel_ids: []   # e.g. ["C01234567"]
+    trusted_team_ids: []      # e.g. ["T01234567"]
+    required_passphrase: ${SLACK_REQUIRED_PASSPHRASE:-}
     mode: ${SLACK_MODE:-balanced}
     default_session_title: "Slack Session"
     max_message_chars: 2000
@@ -178,6 +182,9 @@ integrations:
     enabled: ${TELEGRAM_ENABLED:-false}
     bot_token: ${TELEGRAM_BOT_TOKEN:-}
     secret_token: ${TELEGRAM_SECRET_TOKEN:-}
+    trusted_user_ids: []      # e.g. [123456789]
+    trusted_chat_ids: []      # e.g. [123456789]
+    required_passphrase: ${TELEGRAM_REQUIRED_PASSPHRASE:-}
     mode: ${TELEGRAM_MODE:-balanced}
     default_session_title: "Telegram Session"
     max_message_chars: 2000

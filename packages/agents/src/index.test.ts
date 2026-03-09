@@ -102,12 +102,17 @@ function createTestConfig(): Config {
     integrations: {
       slack: {
         enabled: false,
+        trusted_user_ids: [],
+        trusted_channel_ids: [],
+        trusted_team_ids: [],
         default_session_title: "Slack Session",
         max_message_chars: 2000,
         max_events_per_minute: 30,
       },
       telegram: {
         enabled: false,
+        trusted_user_ids: [],
+        trusted_chat_ids: [],
         default_session_title: "Telegram Session",
         max_message_chars: 2000,
         max_events_per_minute: 30,

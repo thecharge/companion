@@ -32,6 +32,32 @@ export async function runStartupChecks(params: {
     if (cfg.sandbox.runtime === "auto" || cfg.sandbox.runtime === "direct") {
       log.warn(`Production warning: sandbox.runtime is "${cfg.sandbox.runtime}". Pin to "docker" or "podman".`);
     }
+
+    if (cfg.integrations.slack.enabled) {
+      const slackTrust = cfg.integrations.slack;
+      const hasSlackTrustList =
+        slackTrust.trusted_user_ids.length > 0 ||
+        slackTrust.trusted_channel_ids.length > 0 ||
+        slackTrust.trusted_team_ids.length > 0;
+      if (!hasSlackTrustList) {
+        log.warn("Production warning: Slack integration enabled without trusted allowlists.");
+      }
+      if (!slackTrust.required_passphrase) {
+        log.warn("Production warning: Slack integration has no required_passphrase step-up gate.");
+      }
+    }
+
+    if (cfg.integrations.telegram.enabled) {
+      const telegramTrust = cfg.integrations.telegram;
+      const hasTelegramTrustList =
+        telegramTrust.trusted_user_ids.length > 0 || telegramTrust.trusted_chat_ids.length > 0;
+      if (!hasTelegramTrustList) {
+        log.warn("Production warning: Telegram integration enabled without trusted allowlists.");
+      }
+      if (!telegramTrust.required_passphrase) {
+        log.warn("Production warning: Telegram integration has no required_passphrase step-up gate.");
+      }
+    }
   }
 
   const sandboxStrategy = await sandbox.probe();

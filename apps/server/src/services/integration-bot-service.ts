@@ -21,6 +21,7 @@ interface SlackEventBody {
   type?: string;
   challenge?: string;
   event_id?: string;
+  team_id?: string;
   event?: {
     type?: string;
     text?: string;
@@ -38,6 +39,12 @@ interface TelegramBody {
     chat?: { id?: number };
     from?: { id?: number };
   };
+}
+
+interface PassphraseResult {
+  ok: boolean;
+  text?: string;
+  reason?: string;
 }
 
 export class IntegrationBotService {
@@ -97,15 +104,29 @@ export class IntegrationBotService {
     }
 
     const ev = body.event;
-    if (!ev || ev.type !== "message" || ev.subtype || ev.bot_id || !ev.text || !ev.channel) {
+    if (!ev || ev.type !== "message" || ev.subtype || ev.bot_id || !ev.text || !ev.channel || !ev.user) {
       return Response.json({ ok: true, ignored: true });
+    }
+
+    const slackTrust = this.enforceSlackTrust({
+      userId: ev.user,
+      channelId: ev.channel,
+      teamId: body.team_id,
+    });
+    if (!slackTrust.ok) {
+      return Response.json({ ok: true, ignored: true, reason: slackTrust.reason ?? "untrusted_sender" });
+    }
+
+    const slackPassphrase = this.applyRequiredPassphrase(ev.text, this.ctx.cfg.integrations.slack.required_passphrase);
+    if (!slackPassphrase.ok || !slackPassphrase.text) {
+      return Response.json({ ok: true, ignored: true, reason: slackPassphrase.reason ?? "missing_passphrase" });
     }
 
     if (!this.slackLimiter.allow(`slack:${ev.channel}`)) {
       return Response.json({ ok: true, ignored: true, reason: "rate_limited" });
     }
 
-    const guarded = guardInboundMessage(ev.text, this.ctx.cfg.integrations.slack.max_message_chars);
+    const guarded = guardInboundMessage(slackPassphrase.text, this.ctx.cfg.integrations.slack.max_message_chars);
     if (!guarded.ok || !guarded.text) {
       return Response.json({ ok: true, ignored: true, reason: guarded.reason ?? "guard_rejected" });
     }
@@ -165,13 +186,26 @@ export class IntegrationBotService {
     }
 
     const chatId = String(body.message.chat.id);
-    const text = body.message.text;
+    const fromUserId = body.message.from?.id;
+
+    const telegramTrust = this.enforceTelegramTrust({ chatId: body.message.chat.id, fromUserId });
+    if (!telegramTrust.ok) {
+      return Response.json({ ok: true, ignored: true, reason: telegramTrust.reason ?? "untrusted_sender" });
+    }
+
+    const telegramPassphrase = this.applyRequiredPassphrase(
+      body.message.text,
+      this.ctx.cfg.integrations.telegram.required_passphrase,
+    );
+    if (!telegramPassphrase.ok || !telegramPassphrase.text) {
+      return Response.json({ ok: true, ignored: true, reason: telegramPassphrase.reason ?? "missing_passphrase" });
+    }
 
     if (!this.telegramLimiter.allow(`telegram:${chatId}`)) {
       return Response.json({ ok: true, ignored: true, reason: "rate_limited" });
     }
 
-    const guarded = guardInboundMessage(text, this.ctx.cfg.integrations.telegram.max_message_chars);
+    const guarded = guardInboundMessage(telegramPassphrase.text, this.ctx.cfg.integrations.telegram.max_message_chars);
     if (!guarded.ok || !guarded.text) {
       return Response.json({ ok: true, ignored: true, reason: guarded.reason ?? "guard_rejected" });
     }
@@ -207,6 +241,62 @@ export class IntegrationBotService {
     } catch {
       return null;
     }
+  }
+
+  private enforceSlackTrust(input: { userId: string; channelId: string; teamId?: string }): {
+    ok: boolean;
+    reason?: string;
+  } {
+    const trust = this.ctx.cfg.integrations.slack;
+    if (trust.trusted_user_ids.length > 0 && !trust.trusted_user_ids.includes(input.userId)) {
+      return { ok: false, reason: "untrusted_user" };
+    }
+    if (trust.trusted_channel_ids.length > 0 && !trust.trusted_channel_ids.includes(input.channelId)) {
+      return { ok: false, reason: "untrusted_channel" };
+    }
+    if (trust.trusted_team_ids.length > 0) {
+      if (!input.teamId || !trust.trusted_team_ids.includes(input.teamId)) {
+        return { ok: false, reason: "untrusted_team" };
+      }
+    }
+    return { ok: true };
+  }
+
+  private enforceTelegramTrust(input: { chatId: number; fromUserId?: number }): {
+    ok: boolean;
+    reason?: string;
+  } {
+    const trust = this.ctx.cfg.integrations.telegram;
+    if (trust.trusted_user_ids.length > 0) {
+      if (typeof input.fromUserId !== "number" || !trust.trusted_user_ids.includes(input.fromUserId)) {
+        return { ok: false, reason: "untrusted_user" };
+      }
+    }
+    if (trust.trusted_chat_ids.length > 0 && !trust.trusted_chat_ids.includes(input.chatId)) {
+      return { ok: false, reason: "untrusted_chat" };
+    }
+    return { ok: true };
+  }
+
+  private applyRequiredPassphrase(text: string, passphrase?: string): PassphraseResult {
+    if (!passphrase) {
+      return { ok: true, text };
+    }
+
+    const trimmed = text.trim();
+    const prefix = `${passphrase} `;
+    if (trimmed === passphrase) {
+      return { ok: false, reason: "missing_message_after_passphrase" };
+    }
+    if (!trimmed.startsWith(prefix)) {
+      return { ok: false, reason: "missing_passphrase" };
+    }
+
+    const stripped = trimmed.slice(prefix.length).trim();
+    if (!stripped) {
+      return { ok: false, reason: "empty_content" };
+    }
+    return { ok: true, text: stripped };
   }
 
   private async ensureSession(

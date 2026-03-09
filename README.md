@@ -311,8 +311,9 @@ Webhook routes are built into the server (no separate SDK package):
 - Telegram: `POST /integrations/telegram/webhook`
 
 Required config/env:
-- Slack: `SLACK_ENABLED=true`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
-- Telegram: `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, optional `TELEGRAM_SECRET_TOKEN`
+- Slack: `SLACK_ENABLED=true`, `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and trusted allowlists (`trusted_user_ids`, `trusted_channel_ids`, `trusted_team_ids`)
+- Telegram: `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`, and trusted allowlists (`trusted_user_ids`, `trusted_chat_ids`)
+- Optional second-factor style gate for both: `required_passphrase`
 
 Slack URL verification requests are handled automatically (`challenge` response). Incoming messages create/reuse per-channel sessions and can post assistant replies back using configured bot tokens.
 
