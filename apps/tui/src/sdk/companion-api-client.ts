@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import type { Caps, Msg, Session } from "../types";
+import type { AuditEvent, Caps, Msg, Session } from "../types";
 import type { HttpClient } from "./http-client";
 
 export interface CreateSessionInput {
@@ -26,6 +26,11 @@ export class CompanionApiClient {
   };
 
   listCapabilities = async (): Promise<Caps> => this.httpClient.request<Caps>("GET", "/capabilities");
+
+  listAuditEvents = async (limit: number): Promise<AuditEvent[]> => {
+    const response = await this.httpClient.request<{ events: AuditEvent[] }>("GET", `/audit/events?limit=${limit}`);
+    return response.events;
+  };
 
   createSession = async (input: CreateSessionInput): Promise<Session> => {
     const response = await this.httpClient.request<{ session: Session }>("POST", "/sessions", input);

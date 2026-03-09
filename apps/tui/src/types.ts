@@ -57,6 +57,15 @@ export interface Caps {
   skills: Array<{ name: string; description: string }>;
 }
 
+export interface AuditEvent {
+  timestamp: string;
+  category: "http" | "agent" | "tool" | "session" | "error";
+  action: string;
+  status: "ok" | "error";
+  session_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ActiveTask {
   agent: string;
   tool?: string;

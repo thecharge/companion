@@ -31,7 +31,12 @@ mode:
 - `/wd /absolute/path` sets session working directory.
 - `/wd` shows current working directory.
 - `1`, `2`, `3` switch mode.
+- In Capabilities pane: `1/2/3/4` or `a/t/s/u` switch tabs (`agents/tools/skills/audit`).
 - `Esc` cancels active task.
+
+Capabilities pane behavior:
+- Loading now uses braille-shift animation rather than static text.
+- `Audit` tab shows recent server audit events from `/audit/events`.
 
 ## API Flow
 

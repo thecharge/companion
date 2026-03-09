@@ -124,9 +124,16 @@ Complex lane-oriented skills currently bundled:
 - Keep business logic in services/orchestration layers, not transport handlers.
 - Prefer small functions with explicit input/output contracts.
 - Avoid hardcoded policy strings when shared constants or config is available.
+- Never hardcode base agent IDs in orchestration modules; use `BaseAgent` constants from `packages/agents/src/agent-ids.ts`.
+- Keep workflow signals and route policy in `packages/agents/src/policy-config.ts`, not inside function bodies.
 - Use early returns for guard conditions and error paths.
+- Use block-style guard returns in orchestrator/control-flow paths for readability.
+- Prefer `export const ... = async (...) => { ... }` for module-level async helpers.
 - Add tests for any new workflow branch, tool registration, or config remap behavior.
 - Keep app-layer files under project limits and split by domain concern.
+
+Reference standards:
+- `Docs/ENGINEERING_STANDARDS.md`
 
 ## Branch and Commit Guidelines
 
@@ -153,6 +160,7 @@ Workflow tracks are config-driven via `orchestrator.workflow_tracks` in `compani
 Runtime implementation:
 - detection and plan assembly: `packages/agents/src/workflow-tracks.ts`
 - execution loop: `packages/agents/src/index.ts`
+- policy/signal config: `packages/agents/src/policy-config.ts`
 
 Default examples in root config:
 - `product_delivery`: `planner -> prd_designer -> delivery_manager -> engineer -> responder`
@@ -168,7 +176,7 @@ Accepted `content` shapes:
 - `[ {"tool":"...","args":{...}} ]`
 
 Implementation location:
-- `packages/agents/src/index.ts` (`parseDirectToolCalls` and `tryDirectToolExecution`)
+- `packages/agents/src/direct-tool-execution.ts` and `packages/agents/src/index.ts`
 
 Use this mode for reproducible smoke tests and integration proofs when LLM planning variance is undesirable.
 

@@ -1,23 +1,18 @@
 import type { Config } from "@companion/config";
-import { type Blackboard, Logger, type SessionId, bus } from "@companion/core";
+import { type Blackboard, Logger, bus } from "@companion/core";
 import type { DB } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
-import { loadSkillsDir, registerSkills } from "@companion/skills";
-import type { ToolContext, ToolRegistry } from "@companion/tools";
+import type { ToolRegistry } from "@companion/tools";
+import { BaseAgent } from "./agent-ids";
 import { AgentRunner } from "./agent-runner";
-import { hasFileTaskIntent, hasSkillIntent, hasSystemTaskIntent, hasWeatherTaskIntent } from "./patterns";
+import { executeDirectToolCalls } from "./direct-tool-execution";
+import { resolveIntentAgent } from "./intent-routing";
+import { hasSkillIntent } from "./patterns";
 import { buildOrchestratorPrompt } from "./prompts";
-import {
-  PENDING_SKILL_KEY,
-  type ProposedSkillSpec,
-  buildSkillAcquisitionPrompt,
-  createSkillFromProposal,
-  defaultSkillProposalFromMessage,
-  isAffirmative,
-  isNegative,
-  normalizeSkillSpec,
-} from "./skill-acquisition";
+import { buildRuntimeConfig } from "./runtime-config";
+import { defaultSkillProposalFromMessage, normalizeSkillSpec } from "./skill-acquisition";
+import { handlePendingSkillProposal, maybeProposeSkillAcquisition } from "./skill-proposal-flow";
 import type { AgentRunResult, OrchestratorParams } from "./types";
 import {
   type WorkflowTrack,
@@ -39,76 +34,6 @@ function shouldConsiderSkillAcquisition(message: string, blackboard: Blackboard)
   return Array.isArray(rejections) && rejections.length >= 3;
 }
 
-function hasExplicitSkillIntent(message: string): boolean {
-  return hasSkillIntent(message);
-}
-
-function inferForcedAgent(message: string, cfg: Config): string | null {
-  const analyst = cfg.agents.analyst;
-  if (analyst?.tools.includes("weather_lookup") && hasWeatherTaskIntent(message)) {
-    return "analyst";
-  }
-
-  const engineer = cfg.agents.engineer;
-  if (!engineer) return null;
-
-  const hasRunShell = engineer.tools.includes("run_shell");
-  const hasWriteFile = engineer.tools.includes("write_file");
-  if (hasSystemTaskIntent(message) && hasRunShell) return "engineer";
-  if (hasFileTaskIntent(message) && (hasWriteFile || hasRunShell)) return "engineer";
-  return null;
-}
-
-interface DirectToolCall {
-  tool: string;
-  args: Record<string, unknown>;
-}
-
-function parseDirectToolCalls(raw: string): DirectToolCall[] | null {
-  const text = raw.trim();
-  if (!text.startsWith("{") && !text.startsWith("[")) return null;
-
-  try {
-    const parsed = JSON.parse(text) as unknown;
-
-    if (Array.isArray(parsed)) {
-      const calls = parsed
-        .map((entry) => {
-          if (!entry || typeof entry !== "object") return null;
-          const tool = String((entry as Record<string, unknown>).tool ?? "").trim();
-          const args = (entry as Record<string, unknown>).args;
-          if (!tool || !args || typeof args !== "object" || Array.isArray(args)) return null;
-          return { tool, args: args as Record<string, unknown> };
-        })
-        .filter((entry): entry is DirectToolCall => Boolean(entry));
-      return calls.length ? calls : null;
-    }
-
-    if (!parsed || typeof parsed !== "object") return null;
-    const obj = parsed as Record<string, unknown>;
-    if (Array.isArray(obj.tool_calls)) {
-      const calls = obj.tool_calls
-        .map((entry) => {
-          if (!entry || typeof entry !== "object") return null;
-          const tool = String((entry as Record<string, unknown>).tool ?? "").trim();
-          const args = (entry as Record<string, unknown>).args;
-          if (!tool || !args || typeof args !== "object" || Array.isArray(args)) return null;
-          return { tool, args: args as Record<string, unknown> };
-        })
-        .filter((entry): entry is DirectToolCall => Boolean(entry));
-      return calls.length ? calls : null;
-    }
-
-    if (typeof obj.tool === "string" && obj.args && typeof obj.args === "object" && !Array.isArray(obj.args)) {
-      return [{ tool: obj.tool, args: obj.args as Record<string, unknown> }];
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export class SessionProcessor {
   constructor(
     private cfg: Config,
@@ -119,11 +44,20 @@ export class SessionProcessor {
 
   async handleMessage(params: OrchestratorParams): Promise<AgentRunResult> {
     const { session_id, blackboard, user_message, history, working_dir, mode, signal } = params;
-    const runtimeCfg = this.runtimeConfig(mode);
+    const runtimeCfg = buildRuntimeConfig(this.cfg, mode);
 
-    if (signal?.aborted) return { reply: "", blackboard, stopped_reason: "cancelled" };
+    if (signal?.aborted) {
+      return { reply: "", blackboard, stopped_reason: "cancelled" };
+    }
 
-    const directToolReply = await this.tryDirectToolExecution(session_id, user_message, working_dir, runtimeCfg);
+    const directToolReply = await executeDirectToolCalls({
+      sessionId: session_id,
+      userMessage: user_message,
+      workingDir: working_dir,
+      runtimeCfg,
+      registry: this.registry,
+      db: this.db,
+    });
     if (directToolReply) {
       blackboard.appendObservation(`[direct-tools] ${directToolReply.slice(0, 400)}`);
       return { reply: directToolReply, blackboard, stopped_reason: "done" };
@@ -133,18 +67,26 @@ export class SessionProcessor {
     const orchCfg = runtimeCfg.models[orchAlias];
     if (!orchCfg) throw new Error(`Orchestrator model alias not found: ${orchAlias}`);
 
-    const pendingHandled = await this.handlePendingSkillProposal(blackboard, user_message);
+    const pendingHandled = await handlePendingSkillProposal({
+      blackboard,
+      userMessage: user_message,
+      registry: this.registry,
+      cfg: this.cfg,
+    });
     if (pendingHandled) {
       return { reply: pendingHandled, blackboard, stopped_reason: "done" };
     }
 
-    const proposalReply = await this.maybeProposeSkillAcquisition(
+    const proposalReply = await maybeProposeSkillAcquisition({
       runtimeCfg,
       orchCfg,
       blackboard,
-      user_message,
+      userMessage: user_message,
       signal,
-    );
+      registry: this.registry,
+      allowProposal: shouldConsiderSkillAcquisition(user_message, blackboard),
+      defaultProposal: normalizeSkillSpec(defaultSkillProposalFromMessage(user_message)),
+    });
     if (proposalReply) {
       return { reply: proposalReply, blackboard, stopped_reason: "done" };
     }
@@ -157,12 +99,12 @@ export class SessionProcessor {
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
     let decision: { action: string; target?: string; reason?: string };
-    const forcedAgent = inferForcedAgent(user_message, runtimeCfg);
+    const forcedAgent = resolveIntentAgent(user_message, runtimeCfg);
     if (forcedAgent) {
       decision = {
         action: "run_agent",
         target: forcedAgent,
-        reason: "heuristic: explicit system/file task requires tool-capable engineer",
+        reason: "intent route: required tool capability detected",
       };
     } else {
       const orchLLM = createLLMClient(orchCfg);
@@ -184,7 +126,7 @@ export class SessionProcessor {
           decision = JSON.parse(cleaned) as typeof decision;
         } catch {
           log.warn("Orchestrator non-JSON - defaulting to first configured agent", { raw: raw.slice(0, 80) });
-          const fallback = Object.keys(runtimeCfg.agents)[0] ?? "responder";
+          const fallback = Object.keys(runtimeCfg.agents)[0] ?? BaseAgent.Responder;
           decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
         }
       } catch (e) {
@@ -204,12 +146,12 @@ export class SessionProcessor {
     });
     blackboard.appendDecision(1, decision.action, decision.target ?? "", decision.reason ?? "");
 
-    const preferredTarget = decision.target ?? "responder";
+    const preferredTarget = decision.target ?? BaseAgent.Responder;
     const targetName = runtimeCfg.agents[preferredTarget]
       ? preferredTarget
-      : (Object.keys(runtimeCfg.agents).find((name) => name === "responder") ??
+      : (Object.keys(runtimeCfg.agents).find((name) => name === BaseAgent.Responder) ??
         Object.keys(runtimeCfg.agents)[0] ??
-        "responder");
+        BaseAgent.Responder);
 
     if (!runtimeCfg.agents[preferredTarget]) {
       log.warn(`Agent "${preferredTarget}" not defined - falling back to "${targetName}"`);
@@ -235,11 +177,11 @@ export class SessionProcessor {
       blackboard.appendObservation(`[${targetName}] ${agentResult.reply.slice(0, 400)}`);
     }
 
-    if (targetName === "responder" || !agentResult.reply) {
+    if (targetName === BaseAgent.Responder || !agentResult.reply) {
       return { reply: agentResult.reply, blackboard, stopped_reason: agentResult.stopped_reason };
     }
 
-    const respDef = runtimeCfg.agents.responder;
+    const respDef = runtimeCfg.agents[BaseAgent.Responder];
     if (!respDef) {
       return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
     }
@@ -248,10 +190,10 @@ export class SessionProcessor {
       type: "orchestrator_decision",
       session_id,
       ts: new Date(),
-      payload: { round: 2, action: "reply", target: "responder" },
+      payload: { round: 2, action: "reply", target: BaseAgent.Responder },
     });
 
-    const respRunner = new AgentRunner("responder", runtimeCfg, this.registry, this.memory, this.db);
+    const respRunner = new AgentRunner(BaseAgent.Responder, runtimeCfg, this.registry, this.memory, this.db);
     let respResult: Awaited<ReturnType<typeof respRunner.run>>;
 
     try {
@@ -269,112 +211,6 @@ export class SessionProcessor {
       blackboard,
       stopped_reason: "done",
     };
-  }
-
-  private async handlePendingSkillProposal(blackboard: Blackboard, userMessage: string): Promise<string | null> {
-    const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
-    const pendingRaw = scratch[PENDING_SKILL_KEY];
-    if (!pendingRaw || typeof pendingRaw !== "object") return null;
-
-    const pending = normalizeSkillSpec(pendingRaw as Partial<ProposedSkillSpec>);
-
-    if (isAffirmative(userMessage)) {
-      try {
-        const created = await createSkillFromProposal(pending);
-        const loadedSkills = await loadSkillsDir("./skills");
-        await registerSkills(loadedSkills, this.registry);
-        this.enableToolForWorkers(created.spec.tool_name);
-
-        blackboard.setScratchpad(PENDING_SKILL_KEY, null);
-        blackboard.appendObservation(`Created skill ${created.spec.name} at ${created.path}`);
-        return `Created skill "${created.spec.name}" with tool "${created.spec.tool_name}" at ${created.path}. It is now registered and available for this session.`;
-      } catch (error) {
-        blackboard.setScratchpad(PENDING_SKILL_KEY, null);
-        return `Skill creation failed: ${String(error)}`;
-      }
-    }
-
-    if (isNegative(userMessage)) {
-      blackboard.setScratchpad(PENDING_SKILL_KEY, null);
-      return "Understood. I cancelled that proposed skill acquisition.";
-    }
-
-    return `Pending skill proposal: "${pending.name}" (${pending.description}). Reply with 'yes' to create it or 'no' to cancel.`;
-  }
-
-  private async maybeProposeSkillAcquisition(
-    runtimeCfg: Config,
-    orchCfg: Config["models"][string],
-    blackboard: Blackboard,
-    userMessage: string,
-    signal?: AbortSignal,
-  ): Promise<string | null> {
-    const explicit = hasExplicitSkillIntent(userMessage);
-    if (!explicit && !shouldConsiderSkillAcquisition(userMessage, blackboard)) return null;
-
-    const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
-    if (scratch[PENDING_SKILL_KEY]) return null;
-
-    if (explicit) {
-      const proposal = normalizeSkillSpec(defaultSkillProposalFromMessage(userMessage));
-      blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
-      blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
-      return [
-        `I detected a reusable capability gap and propose a new skill: "${proposal.name}".`,
-        `Reason: ${proposal.why}`,
-        `Planned tool: ${proposal.tool_name}`,
-        "Reply 'yes' to create it now, or 'no' to continue without creating it.",
-      ].join("\n");
-    }
-
-    const toolNames = this.registry.list().map((tool) => tool.function.name);
-    const orchLLM = createLLMClient(orchCfg);
-
-    try {
-      const res = await orchLLM.chat({
-        messages: [
-          { role: "system", content: buildSkillAcquisitionPrompt(userMessage, toolNames) },
-          {
-            role: "user",
-            content: `Mode: ${runtimeCfg.mode.default}. Decide if a reusable new skill should be acquired for this request.`,
-          },
-        ],
-        json_mode: orchCfg.provider === "ollama",
-        signal,
-      });
-
-      const raw = res.choices[0]?.message.content ?? "";
-      const cleaned = raw
-        .replace(/^```json\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-
-      const parsed = JSON.parse(cleaned) as { should_acquire?: boolean } & Partial<ProposedSkillSpec>;
-      if (!parsed.should_acquire) return null;
-
-      const proposal = normalizeSkillSpec(parsed);
-      blackboard.setScratchpad(PENDING_SKILL_KEY, proposal);
-      blackboard.appendDecision(0, "propose_skill", proposal.name, proposal.why);
-
-      return [
-        `I detected a reusable capability gap and propose a new skill: "${proposal.name}".`,
-        `Reason: ${proposal.why}`,
-        `Planned tool: ${proposal.tool_name}`,
-        "Reply 'yes' to create it now, or 'no' to continue without creating it.",
-      ].join("\n");
-    } catch {
-      return null;
-    }
-  }
-
-  private enableToolForWorkers(toolName: string): void {
-    for (const agentName of ["engineer", "analyst"] as const) {
-      const agent = this.cfg.agents[agentName];
-      if (!agent) continue;
-      if (!agent.tools.includes(toolName)) {
-        agent.tools.push(toolName);
-      }
-    }
   }
 
   private async runWorkflowTrack(
@@ -411,7 +247,9 @@ export class SessionProcessor {
         signal,
       });
 
-      if (result.stopped_reason === "cancelled") return { reply: "", blackboard, stopped_reason: "cancelled" };
+      if (result.stopped_reason === "cancelled") {
+        return { reply: "", blackboard, stopped_reason: "cancelled" };
+      }
       if (result.stopped_reason === "error") {
         return {
           reply: result.reply || `Workflow agent ${agentName} failed`,
@@ -433,100 +271,5 @@ export class SessionProcessor {
     }
 
     return { reply: finalReply, blackboard, stopped_reason: "done" };
-  }
-
-  private runtimeConfig(mode: string): Config {
-    if (mode === "local") return this.cfg;
-
-    const clone: Config = {
-      ...this.cfg,
-      orchestrator: { ...this.cfg.orchestrator },
-      agents: Object.fromEntries(
-        Object.entries(this.cfg.agents).map(([name, agent]) => [name, { ...agent }]),
-      ) as Config["agents"],
-    };
-
-    const has = (alias: string) => Boolean(clone.models[alias]);
-
-    if (mode === "balanced") {
-      if (has("local")) clone.orchestrator.model = "local";
-      for (const name of [
-        "analyst",
-        "planner",
-        "engineer",
-        "prd_designer",
-        "delivery_manager",
-        "operations_commander",
-        "researcher",
-      ]) {
-        if (has("smart") && clone.agents[name]) clone.agents[name].model = "smart";
-      }
-      if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
-      return clone;
-    }
-
-    if (mode === "cloud") {
-      if (has("smart")) clone.orchestrator.model = "smart";
-      for (const name of [
-        "analyst",
-        "planner",
-        "engineer",
-        "prd_designer",
-        "delivery_manager",
-        "operations_commander",
-        "researcher",
-      ]) {
-        if (has("smart") && clone.agents[name]) clone.agents[name].model = "smart";
-      }
-      if (has("fast") && clone.agents.responder) clone.agents.responder.model = "fast";
-      return clone;
-    }
-
-    return this.cfg;
-  }
-
-  private async tryDirectToolExecution(
-    sessionId: SessionId,
-    userMessage: string,
-    workingDir: string,
-    runtimeCfg: Config,
-  ): Promise<string | null> {
-    const directCalls = parseDirectToolCalls(userMessage);
-    if (!directCalls?.length) return null;
-
-    const toolContext: ToolContext = {
-      session_id: sessionId,
-      working_dir: workingDir,
-      db: this.db,
-      cfg: runtimeCfg,
-    };
-
-    const outputs: string[] = [];
-    for (let i = 0; i < directCalls.length; i++) {
-      const call = directCalls[i];
-      if (!call) continue;
-
-      if (!this.registry.get(call.tool)) {
-        outputs.push(`[error] unknown tool: ${call.tool}`);
-        continue;
-      }
-
-      const result = await this.registry.run(
-        {
-          id: `direct_${Date.now()}_${i}`,
-          tool_name: call.tool,
-          args: call.args,
-        },
-        toolContext,
-      );
-
-      if (result.error) {
-        outputs.push(`[error] ${call.tool}: ${result.error}`);
-      } else {
-        outputs.push(`[ok] ${call.tool}: ${result.result ?? "done"}`);
-      }
-    }
-
-    return outputs.join("\n");
   }
 }

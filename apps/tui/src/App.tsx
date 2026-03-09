@@ -23,7 +23,7 @@ import {
 import { CompanionApiClient } from "./sdk/companion-api-client";
 import { HttpClient } from "./sdk/http-client";
 import { SessionRepository } from "./sdk/session-repository";
-import { type ActiveTask, type Caps, type LogEntry, type Msg, Pane, type Session } from "./types";
+import { type ActiveTask, type AuditEvent, type Caps, type LogEntry, type Msg, Pane, type Session } from "./types";
 import { streamSessionMessage } from "./utils/chat-stream";
 import { handleGlobalInput } from "./utils/global-input-handler";
 import { handleWebSocketEnvelope } from "./utils/ws-event-handler";
@@ -44,6 +44,7 @@ export const App = () => {
   const [streaming, setStreaming] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [caps, setCaps] = useState<Caps | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [statusMsg, setStatusMsg] = useState("");
   const [workingDir, setWorkingDir] = useState(process.cwd());
   const [previousWorkingDir, setPreviousWorkingDir] = useState(process.cwd());
@@ -75,6 +76,7 @@ export const App = () => {
       const loaded = await sessionRepository.loadSessionsAndCapabilities();
       setSessions(loaded.sessions);
       setCaps(loaded.caps);
+      setAuditEvents(loaded.auditEvents);
       setStatusMsg("");
     } catch {
       setStatusMsg(`Cannot reach ${SERVER}`);
@@ -269,6 +271,7 @@ export const App = () => {
       streaming={streaming}
       wsConnected={wsConnected}
       caps={caps}
+      auditEvents={auditEvents}
       statusMsg={statusMsg}
       loaderFrameIndex={loaderFrameIndex}
       addLogEntry={addLogEntry}

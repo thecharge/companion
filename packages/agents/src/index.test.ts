@@ -11,6 +11,7 @@ import type { Config } from "@companion/config";
 import { Blackboard, asSession } from "@companion/core";
 import { ToolRegistry } from "@companion/tools";
 import { SessionProcessor, detectWorkflowTrack } from "./index";
+import { buildRuntimeConfig } from "./runtime-config";
 import { PENDING_SKILL_KEY, type ProposedSkillSpec } from "./skill-acquisition";
 
 function createTestConfig(): Config {
@@ -181,18 +182,14 @@ describe("agents exports", () => {
 
   test("runtime mode remapping preserves extensibility", () => {
     const cfg = createMultiModelConfig();
-    const processor = new SessionProcessor(cfg, new ToolRegistry(), {} as never, {} as never) as unknown as {
-      runtimeConfig: (mode: string) => Config;
-    };
-
-    const balanced = processor.runtimeConfig("balanced");
+    const balanced = buildRuntimeConfig(cfg, "balanced");
     expect(balanced.orchestrator.model).toBe("local");
     expect(balanced.agents.analyst?.model).toBe("smart");
     expect(balanced.agents.engineer?.model).toBe("smart");
     expect(balanced.agents.responder?.model).toBe("fast");
     expect(balanced.agents.researcher?.model).toBe("smart");
 
-    const cloud = processor.runtimeConfig("cloud");
+    const cloud = buildRuntimeConfig(cfg, "cloud");
     expect(cloud.orchestrator.model).toBe("smart");
     expect(cloud.agents.analyst?.model).toBe("smart");
     expect(cloud.agents.engineer?.model).toBe("smart");

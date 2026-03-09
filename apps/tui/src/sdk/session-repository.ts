@@ -3,15 +3,20 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import type { Caps, Msg, Session } from "../types";
+import { DEFAULT_AUDIT_FETCH_LIMIT } from "../constants";
+import type { AuditEvent, Caps, Msg, Session } from "../types";
 import type { CompanionApiClient } from "./companion-api-client";
 
 export class SessionRepository {
   constructor(private readonly apiClient: CompanionApiClient) {}
 
-  loadSessionsAndCapabilities = async (): Promise<{ sessions: Session[]; caps: Caps }> => {
-    const [sessions, caps] = await Promise.all([this.apiClient.listSessions(), this.apiClient.listCapabilities()]);
-    return { sessions, caps };
+  loadSessionsAndCapabilities = async (): Promise<{ sessions: Session[]; caps: Caps; auditEvents: AuditEvent[] }> => {
+    const [sessions, caps, auditEvents] = await Promise.all([
+      this.apiClient.listSessions(),
+      this.apiClient.listCapabilities(),
+      this.apiClient.listAuditEvents(DEFAULT_AUDIT_FETCH_LIMIT),
+    ]);
+    return { sessions, caps, auditEvents };
   };
 
   createAndLoadSession = async (title: string): Promise<Session> =>

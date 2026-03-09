@@ -9,7 +9,7 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { LOADER_FRAMES } from "../constants";
 import type { SessionRepository } from "../sdk/session-repository";
-import { type ActiveTask, type Caps, type LogEntry, type Msg, Pane, type Session } from "../types";
+import { type ActiveTask, type AuditEvent, type Caps, type LogEntry, type Msg, Pane, type Session } from "../types";
 import { CapabilitiesPane } from "./CapabilitiesPane";
 import { ChatPane } from "./ChatPane";
 import { SessionList } from "./SessionList";
@@ -30,6 +30,7 @@ interface AppLayoutProps {
   streaming: boolean;
   wsConnected: boolean;
   caps: Caps | null;
+  auditEvents: AuditEvent[];
   statusMsg: string;
   loaderFrameIndex: number;
   addLogEntry: (text: string) => void;
@@ -79,6 +80,7 @@ export const AppLayout = ({
   streaming,
   wsConnected,
   caps,
+  auditEvents,
   statusMsg,
   loaderFrameIndex,
   addLogEntry,
@@ -177,7 +179,12 @@ export const AppLayout = ({
         }}
         onAbort={abortStreaming}
       />
-      <CapabilitiesPane caps={caps} active={pane === Pane.Capabilities} />
+      <CapabilitiesPane
+        caps={caps}
+        auditEvents={auditEvents}
+        active={pane === Pane.Capabilities}
+        loaderFrameIndex={loaderFrameIndex}
+      />
     </Box>
   </Box>
 );

@@ -28,6 +28,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Real usage examples: `Docs/EXAMPLES.md`
 - Usage guide: `Docs/USAGE_GUIDE.md`
 - Development guide: `Docs/DEVELOPMENT_GUIDE.md`
+- Engineering standards: `Docs/ENGINEERING_STANDARDS.md`
 
 ## Prerequisites
 - Python 3.x
@@ -163,12 +164,14 @@ packages/
 - TUI has been split into modular components for maintainability.
 - TUI transport now uses typed SDK/repository layers under `apps/tui/src/sdk` for API and session operations.
 - TUI now shows structured active execution state (`agent`, stage, tool) instead of only generic spinner dots.
+- TUI Capabilities pane now includes `Audit` events and braille-shift loading animation for visible operational state.
 - Server now applies security response headers by default.
 - Startup checks are centralized for sandbox/model readiness.
 - Server runtime is now split by concern under `apps/server/src/{bootstrap,constants,middleware,routes,services,ws}`.
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
 - Persistent audit events are written to `./data/audit-events.ndjson` (override: `COMPANION_AUDIT_LOG_PATH`) and exposed via `/audit/events`.
 - Shared enum-like constants now exist in `packages/core` for key literals.
+- Agent orchestration policy constants are centralized in `packages/agents/src/policy-config.ts` and base IDs in `packages/agents/src/agent-ids.ts`.
 - Multi-lane workflow orchestration is available for product-delivery and operations tracks.
 
 ## Build, Test, Typecheck

@@ -65,7 +65,9 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
     }
 
     if (pathName === RoutePath.AuditEvents && method === HttpMethod.Get) {
-      const limit = Number(url.searchParams.get(QueryParam.AuditLimit) ?? "200");
+      const rawLimit = url.searchParams.get(QueryParam.AuditLimit);
+      const parsedLimit = rawLimit ? Number(rawLimit) : undefined;
+      const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
       await ctx.auditLogService.recordHttpEvent({ action: "audit_events_list", status: "ok" });
       const events = await ctx.auditLogService.listRecent(limit);
       return Response.json({ events });

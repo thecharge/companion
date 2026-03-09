@@ -76,6 +76,7 @@ export const POLL_INTERVAL_MS = 5000;
 export const MAX_LOG_ENTRIES = 40;
 export const MAX_RECONNECT_DELAY_MS = 30_000;
 export const INITIAL_RECONNECT_DELAY_MS = 1000;
+export const DEFAULT_AUDIT_FETCH_LIMIT = 12;
 
 export const WS_MESSAGE_TYPE = {
   SyncState: "sync_state",
@@ -90,3 +91,4 @@ export const WS_MESSAGE_TYPE = {
 } as const;
 
 export const LOADER_FRAMES = [".", "..", "...", "...."] as const;
+export const BRAILLE_SHIFT_FRAMES = ["\u2801", "\u2803", "\u2807", "\u280f", "\u281f", "\u283f", "\u287f"] as const;
