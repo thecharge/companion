@@ -21,15 +21,15 @@ services:
       LOG_LEVEL: "debug"
     volumes:
       # Mount live source — edits on host are reflected immediately
-      - ./packages:/app/packages:ro
-      - ./apps:/app/apps:ro
-      - ./scripts:/app/scripts:ro
+      - ../packages:/app/packages:ro
+      - ../apps:/app/apps:ro
+      - ../scripts:/app/scripts:ro
       # Data and workspace writable
       - companion-data:/app/data
       - companion-workspace:/app/workspace
       # Config and skills editable from host
-      - ./companion.yaml:/app/companion.yaml:ro
-      - ./skills:/app/skills:ro
+      - ../companion.yaml:/app/companion.yaml:ro
+      - ../skills:/app/skills:ro
 
 volumes:
   companion-data:

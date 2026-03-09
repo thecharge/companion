@@ -124,8 +124,8 @@ Complex lane-oriented skills currently bundled:
 - Keep business logic in services/orchestration layers, not transport handlers.
 - Prefer small functions with explicit input/output contracts.
 - Avoid hardcoded policy strings when shared constants or config is available.
-- Never hardcode base agent IDs in orchestration modules; use `BaseAgent` constants from `packages/agents/src/agent-ids.ts`.
-- Keep workflow signals and route policy in `packages/agents/src/policy-config.ts`, not inside function bodies.
+- Never hardcode base agent IDs in orchestration modules; configure role IDs via `orchestrator.roles` in `companion.yaml`.
+- Keep workflow signals and route policy in YAML (`orchestrator.workflow_tracks`, `orchestrator.intent_routes`), not inside function bodies.
 - Use early returns for guard conditions and error paths.
 - Use block-style guard returns in orchestrator/control-flow paths for readability.
 - Prefer `export const ... = async (...) => { ... }` for module-level async helpers.
@@ -160,7 +160,10 @@ Workflow tracks are config-driven via `orchestrator.workflow_tracks` in `compani
 Runtime implementation:
 - detection and plan assembly: `packages/agents/src/workflow-tracks.ts`
 - execution loop: `packages/agents/src/index.ts`
-- policy/signal config: `packages/agents/src/policy-config.ts`
+- policy/signal config: `companion.yaml` (`orchestrator.roles`, `orchestrator.intent_routes`, `orchestrator.workflow_tracks`)
+
+Role and route strict validation:
+- implemented in `packages/config/src/index.ts` (`ConfigSchema.superRefine`)
 
 Default examples in root config:
 - `product_delivery`: `planner -> prd_designer -> delivery_manager -> engineer -> responder`

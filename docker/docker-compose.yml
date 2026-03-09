@@ -22,7 +22,7 @@ services:
   # ── Companion server ────────────────────────────────────────
   server:
     build:
-      context: .                              # repo root
+      context: ..                             # repo root
       dockerfile: docker/server/Dockerfile
     image: companion-server:latest
     container_name: companion-server
@@ -44,9 +44,9 @@ services:
       # Persist agent working files
       - companion-workspace:/app/workspace
       # Mount companion.yaml from host so you can edit config without rebuilding
-      - ./companion.yaml:/app/companion.yaml:ro
+      - ../companion.yaml:/app/companion.yaml:ro
       # Mount skills directory so you can add skills without rebuilding
-      - ./skills:/app/skills:ro
+      - ../skills:/app/skills:ro
     depends_on:
       ollama:
         condition: service_healthy

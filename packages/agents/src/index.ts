@@ -4,12 +4,12 @@ import type { DB } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import type { ToolRegistry } from "@companion/tools";
-import { BaseAgent } from "./agent-ids";
 import { AgentRunner } from "./agent-runner";
 import { executeDirectToolCalls } from "./direct-tool-execution";
 import { resolveIntentAgent } from "./intent-routing";
 import { hasSkillIntent } from "./patterns";
 import { buildOrchestratorPrompt } from "./prompts";
+import { resolveResponderAgent } from "./role-policy";
 import { buildRuntimeConfig } from "./runtime-config";
 import { defaultSkillProposalFromMessage, normalizeSkillSpec } from "./skill-acquisition";
 import { handlePendingSkillProposal, maybeProposeSkillAcquisition } from "./skill-proposal-flow";
@@ -22,17 +22,17 @@ import {
 
 const log = new Logger("agents");
 
-export function detectWorkflowTrack(message: string): WorkflowTrack {
-  return detectWorkflowTrackInternal(message);
-}
+export const detectWorkflowTrack = (message: string, cfg?: Config): WorkflowTrack => {
+  return detectWorkflowTrackInternal(message, cfg);
+};
 
-function shouldConsiderSkillAcquisition(message: string, blackboard: Blackboard): boolean {
+const shouldConsiderSkillAcquisition = (message: string, blackboard: Blackboard): boolean => {
   const explicitIntent = hasSkillIntent(message);
   if (explicitIntent) return true;
 
   const rejections = blackboard.read("rejections");
   return Array.isArray(rejections) && rejections.length >= 3;
-}
+};
 
 export class SessionProcessor {
   constructor(
@@ -45,6 +45,7 @@ export class SessionProcessor {
   async handleMessage(params: OrchestratorParams): Promise<AgentRunResult> {
     const { session_id, blackboard, user_message, history, working_dir, mode, signal } = params;
     const runtimeCfg = buildRuntimeConfig(this.cfg, mode);
+    const responder = resolveResponderAgent(runtimeCfg);
 
     if (signal?.aborted) {
       return { reply: "", blackboard, stopped_reason: "cancelled" };
@@ -122,19 +123,20 @@ export class SessionProcessor {
           .replace(/^```json\s*/i, "")
           .replace(/\s*```$/i, "")
           .trim();
+
         try {
           decision = JSON.parse(cleaned) as typeof decision;
         } catch {
           log.warn("Orchestrator non-JSON - defaulting to first configured agent", { raw: raw.slice(0, 80) });
-          const fallback = Object.keys(runtimeCfg.agents)[0] ?? BaseAgent.Responder;
+          const fallback = Object.keys(runtimeCfg.agents)[0] ?? responder;
           decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
         }
-      } catch (e) {
-        const msg = String(e);
+      } catch (error) {
+        const msg = String(error);
         if (signal?.aborted || msg.includes("AbortError")) {
           return { reply: "", blackboard, stopped_reason: "cancelled" };
         }
-        throw e;
+        throw error;
       }
     }
 
@@ -146,12 +148,12 @@ export class SessionProcessor {
     });
     blackboard.appendDecision(1, decision.action, decision.target ?? "", decision.reason ?? "");
 
-    const preferredTarget = decision.target ?? BaseAgent.Responder;
+    const preferredTarget = decision.target ?? responder;
     const targetName = runtimeCfg.agents[preferredTarget]
       ? preferredTarget
-      : (Object.keys(runtimeCfg.agents).find((name) => name === BaseAgent.Responder) ??
+      : (Object.keys(runtimeCfg.agents).find((name) => name === responder) ??
         Object.keys(runtimeCfg.agents)[0] ??
-        BaseAgent.Responder);
+        responder);
 
     if (!runtimeCfg.agents[preferredTarget]) {
       log.warn(`Agent "${preferredTarget}" not defined - falling back to "${targetName}"`);
@@ -177,12 +179,11 @@ export class SessionProcessor {
       blackboard.appendObservation(`[${targetName}] ${agentResult.reply.slice(0, 400)}`);
     }
 
-    if (targetName === BaseAgent.Responder || !agentResult.reply) {
+    if (targetName === responder || !agentResult.reply) {
       return { reply: agentResult.reply, blackboard, stopped_reason: agentResult.stopped_reason };
     }
 
-    const respDef = runtimeCfg.agents[BaseAgent.Responder];
-    if (!respDef) {
+    if (!runtimeCfg.agents[responder]) {
       return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
     }
 
@@ -190,24 +191,31 @@ export class SessionProcessor {
       type: "orchestrator_decision",
       session_id,
       ts: new Date(),
-      payload: { round: 2, action: "reply", target: BaseAgent.Responder },
+      payload: { round: 2, action: "reply", target: responder },
     });
 
-    const respRunner = new AgentRunner(BaseAgent.Responder, runtimeCfg, this.registry, this.memory, this.db);
-    let respResult: Awaited<ReturnType<typeof respRunner.run>>;
+    const responderRunner = new AgentRunner(responder, runtimeCfg, this.registry, this.memory, this.db);
+    let responderResult: Awaited<ReturnType<typeof responderRunner.run>>;
 
     try {
-      respResult = await respRunner.run({ session_id, blackboard, user_message, history, working_dir, signal });
+      responderResult = await responderRunner.run({
+        session_id,
+        blackboard,
+        user_message,
+        history,
+        working_dir,
+        signal,
+      });
     } catch {
       return { reply: agentResult.reply, blackboard, stopped_reason: "done" };
     }
 
-    if (respResult.stopped_reason === "cancelled") {
+    if (responderResult.stopped_reason === "cancelled") {
       return { reply: "", blackboard, stopped_reason: "cancelled" };
     }
 
     return {
-      reply: respResult.reply || agentResult.reply,
+      reply: responderResult.reply || agentResult.reply,
       blackboard,
       stopped_reason: "done",
     };
@@ -221,7 +229,11 @@ export class SessionProcessor {
     const { session_id, blackboard, user_message, history, working_dir, signal } = params;
     const plan = workflowPlan(track, runtimeCfg);
     if (!plan.length) {
-      return { reply: "No configured agents available for workflow execution.", blackboard, stopped_reason: "error" };
+      return {
+        reply: `No configured workflow stages found for track '${track}'.`,
+        blackboard,
+        stopped_reason: "error",
+      };
     }
 
     blackboard.appendDecision(0, "workflow_track", track, plan.join(" -> "));
@@ -229,7 +241,7 @@ export class SessionProcessor {
     let finalReply = "";
 
     for (let i = 0; i < plan.length; i++) {
-      const agentName = plan[i] ?? "responder";
+      const agentName = plan[i] ?? resolveResponderAgent(runtimeCfg);
       bus.emit({
         type: "orchestrator_decision",
         session_id,

@@ -1,12 +1,35 @@
 import type { Config } from "@companion/config";
-import { INTENT_ROUTE_POLICIES } from "./policy-config";
+
+interface IntentRoute {
+  matchers: RegExp[];
+  requiredTools: string[];
+  preferredAgent?: string;
+}
+
+const compileKeywordMatcher = (keyword: string): RegExp => {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i");
+};
+
+const configuredIntentRoutes = (cfg: Config): IntentRoute[] => {
+  return cfg.orchestrator.intent_routes
+    .map((route) => ({
+      matchers: route.keywords.map(compileKeywordMatcher),
+      requiredTools: route.required_tools,
+      preferredAgent: route.preferred_agent,
+    }))
+    .filter((route) => route.matchers.length > 0 && route.requiredTools.length > 0);
+};
 
 const agentHasAllTools = (agent: { tools: string[] }, requiredTools: string[]): boolean => {
   return requiredTools.every((tool) => agent.tools.includes(tool));
 };
 
 export const resolveIntentAgent = (message: string, cfg: Config): string | null => {
-  for (const route of INTENT_ROUTE_POLICIES) {
+  const routes = configuredIntentRoutes(cfg);
+  if (!routes.length) return null;
+
+  for (const route of routes) {
     const matched = route.matchers.some((matcher) => matcher.test(message));
     if (!matched) continue;
 

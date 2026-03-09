@@ -3,7 +3,7 @@ import type { Blackboard } from "@companion/core";
 import { createLLMClient } from "@companion/llm";
 import { loadSkillsDir, registerSkills } from "@companion/skills";
 import type { ToolRegistry } from "@companion/tools";
-import { BaseAgent } from "./agent-ids";
+import { resolveSkillWorkerAgents } from "./role-policy";
 import {
   PENDING_SKILL_KEY,
   type ProposedSkillSpec,
@@ -14,20 +14,14 @@ import {
   normalizeSkillSpec,
 } from "./skill-acquisition";
 
-const skillWorkerAgents = (cfg: Config): string[] => {
-  return Object.entries(cfg.agents)
-    .filter(([name, agent]) => name !== BaseAgent.Responder && agent.tools.length > 0)
-    .map(([name]) => name);
-};
-
-function proposalReply(proposal: ProposedSkillSpec): string {
+const proposalReply = (proposal: ProposedSkillSpec): string => {
   return [
     `I detected a reusable capability gap and propose a new skill: "${proposal.name}".`,
     `Reason: ${proposal.why}`,
     `Planned tool: ${proposal.tool_name}`,
     "Reply 'yes' to create it now, or 'no' to continue without creating it.",
   ].join("\n");
-}
+};
 
 export const handlePendingSkillProposal = async (params: {
   blackboard: Blackboard;
@@ -47,7 +41,7 @@ export const handlePendingSkillProposal = async (params: {
       const loadedSkills = await loadSkillsDir("./skills");
       await registerSkills(loadedSkills, params.registry);
 
-      for (const agentName of skillWorkerAgents(params.cfg)) {
+      for (const agentName of resolveSkillWorkerAgents(params.cfg)) {
         const agent = params.cfg.agents[agentName];
         if (!agent) continue;
         if (!agent.tools.includes(created.spec.tool_name)) {

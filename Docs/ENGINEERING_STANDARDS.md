@@ -5,15 +5,14 @@ This document defines repository-wide standards for orchestration, configuration
 ## Architecture Rules
 
 - Do not hardcode base agent IDs (`analyst`, `engineer`, `responder`, etc.) in orchestration logic.
-- Use `packages/agents/src/agent-ids.ts` (`BaseAgent.*`) whenever referring to built-in lane IDs.
-- Keep policy tables and signal lists in central config modules, not inline in lambda/function bodies.
-- Current policy source of truth: `packages/agents/src/policy-config.ts`.
+- Keep orchestration policy in YAML config, not code-level policy tables.
+- Current policy source of truth: `companion.yaml` under `orchestrator.roles`, `orchestrator.intent_routes`, and `orchestrator.workflow_tracks`.
 
 ## Configuration Placement
 
-- Treat signal lists, workflow plans, and intent route policy as configuration data.
-- Keep configuration at module scope or dedicated config files.
-- Do not rebuild static config arrays on every function invocation.
+- Treat signal lists, workflow plans, and intent route policy as YAML configuration data.
+- Keep runtime parsing/validation in `packages/config/src/index.ts`.
+- Do not rebuild static policy arrays in function bodies.
 
 ## Code Style Rules
 
@@ -44,4 +43,4 @@ Before merge:
 2. `bun run typecheck`
 3. `bun run test`
 4. Confirm no new hardcoded base-agent literals were introduced in `packages/agents`.
-5. Confirm policy updates were made in `policy-config.ts` instead of inline orchestration.
+5. Confirm policy updates were made in `companion.yaml` (`orchestrator.*`) instead of inline orchestration code.

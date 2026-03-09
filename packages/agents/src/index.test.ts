@@ -34,7 +34,32 @@ function createTestConfig(): Config {
       model: "local",
       max_rounds: 3,
       verify_results: false,
-      workflow_tracks: {},
+      workflow_tracks: {
+        product_delivery: {
+          triggers: ["prd", "product requirement", "roadmap", "feature spec", "acceptance criteria", "delivery plan"],
+          stages: ["planner", "prd_designer", "delivery_manager", "engineer", "responder"],
+        },
+        operations: {
+          triggers: [
+            "incident",
+            "outage",
+            "operations",
+            "runbook",
+            "sre",
+            "deployment",
+            "rollback",
+            "release",
+            "postmortem",
+          ],
+          stages: ["planner", "operations_commander", "analyst", "engineer", "responder"],
+        },
+      },
+      roles: {
+        responder: "responder",
+        promoted_agents: ["analyst", "engineer"],
+        skill_worker_agents: ["analyst", "engineer"],
+      },
+      intent_routes: [],
     },
     agents: {
       engineer: {
@@ -220,8 +245,9 @@ describe("agents exports", () => {
   });
 
   test("detects workflow tracks for product and operations intents", () => {
-    expect(detectWorkflowTrack("Create a PRD and delivery plan for feature rollout")).toBe("product_delivery");
-    expect(detectWorkflowTrack("Investigate outage and create incident runbook")).toBe("operations");
-    expect(detectWorkflowTrack("answer this quick question")).toBe("standard");
+    const cfg = createMultiModelConfig();
+    expect(detectWorkflowTrack("Create a PRD and delivery plan for feature rollout", cfg)).toBe("product_delivery");
+    expect(detectWorkflowTrack("Investigate outage and create incident runbook", cfg)).toBe("operations");
+    expect(detectWorkflowTrack("answer this quick question", cfg)).toBe("standard");
   });
 });

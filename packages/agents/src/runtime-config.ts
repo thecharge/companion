@@ -1,9 +1,7 @@
 import type { Config } from "@companion/config";
-import { BaseAgent } from "./agent-ids";
+import { resolvePromotedAgents, resolveResponderAgent } from "./role-policy";
 
-const promotedAgents = (cfg: Config): string[] => {
-  return Object.keys(cfg.agents).filter((name) => name !== BaseAgent.Responder);
-};
+const promotedAgents = (cfg: Config): string[] => resolvePromotedAgents(cfg);
 
 export const buildRuntimeConfig = (base: Config, mode: string): Config => {
   if (mode === "local") return base;
@@ -17,6 +15,7 @@ export const buildRuntimeConfig = (base: Config, mode: string): Config => {
   };
 
   const has = (alias: string) => Boolean(clone.models[alias]);
+  const responder = resolveResponderAgent(clone);
 
   if (mode === "balanced") {
     if (has("local")) clone.orchestrator.model = "local";
@@ -26,8 +25,8 @@ export const buildRuntimeConfig = (base: Config, mode: string): Config => {
         if (agent) agent.model = "smart";
       }
     }
-    if (has("fast") && clone.agents[BaseAgent.Responder]) {
-      clone.agents[BaseAgent.Responder].model = "fast";
+    if (has("fast") && clone.agents[responder]) {
+      clone.agents[responder].model = "fast";
     }
     return clone;
   }
@@ -40,8 +39,8 @@ export const buildRuntimeConfig = (base: Config, mode: string): Config => {
         if (agent) agent.model = "smart";
       }
     }
-    if (has("fast") && clone.agents[BaseAgent.Responder]) {
-      clone.agents[BaseAgent.Responder].model = "fast";
+    if (has("fast") && clone.agents[responder]) {
+      clone.agents[responder].model = "fast";
     }
     return clone;
   }

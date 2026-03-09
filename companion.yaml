@@ -60,6 +60,20 @@ orchestrator:
   model:          local           # mode overrides this at runtime in balanced/cloud
   max_rounds:     3               # was 10 — lower prevents runaway loops
   verify_results: false           # disabled: same 3B model verifying itself is noise
+  roles:
+    responder: responder
+    promoted_agents: [analyst, planner, prd_designer, delivery_manager, operations_commander, engineer]
+    skill_worker_agents: [analyst, engineer]
+  intent_routes:
+    - keywords: [weather, temperature, forecast, rain, wind, humidity]
+      required_tools: [weather_lookup]
+      preferred_agent: analyst
+    - keywords: [system load, cpu load, load average, uptime, memory usage, disk usage, top, current load, host load]
+      required_tools: [run_shell]
+      preferred_agent: engineer
+    - keywords: [create file, edit file, modify file, update file, write file, append file, rename file, delete file, patch file]
+      required_tools: [write_file]
+      preferred_agent: engineer
   workflow_tracks:
     product_delivery:
       triggers: [prd, "product requirement", roadmap, "feature spec", "acceptance criteria", "delivery plan"]

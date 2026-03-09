@@ -8,8 +8,16 @@ import { Box, Text, useInput } from "ink";
 // @ts-ignore ink-text-input publishes its own types
 import TextInput from "ink-text-input";
 import React, { useEffect, useRef, useState } from "react";
-import { VISIBLE_MESSAGES } from "../constants";
-import { type ActiveTask, type LogEntry, type Msg, type Session, SessionMode, TaskStatus } from "../types";
+import { BRAILLE_SHIFT_FRAMES, VISIBLE_MESSAGES } from "../constants";
+import {
+  type ActiveTask,
+  type AuditEvent,
+  type LogEntry,
+  type Msg,
+  type Session,
+  SessionMode,
+  TaskStatus,
+} from "../types";
 
 function modeColor(mode: Session["mode"]): string {
   if (mode === SessionMode.Local) return "green";
@@ -69,6 +77,23 @@ function ActionLog({ entries }: { entries: LogEntry[] }) {
   );
 }
 
+function AuditTail({ events }: { events: AuditEvent[] }) {
+  if (!events.length) return null;
+  const recent = events.slice(-3).reverse();
+  return (
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
+      <Text color="cyan" bold>
+        audit tail
+      </Text>
+      {recent.map((event) => (
+        <Text key={`${event.timestamp}:${event.action}`} color={event.status === "error" ? "red" : "gray"} dimColor>
+          {new Date(event.timestamp).toLocaleTimeString("en", { hour12: false })} {event.category}:{event.action}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
 export function ChatPane({
   session,
   messages,
@@ -78,6 +103,8 @@ export function ChatPane({
   streaming,
   active,
   wsConnected,
+  auditEvents,
+  loaderFrameIndex,
   onSend,
   onModeChange,
   onAbort,
@@ -90,6 +117,8 @@ export function ChatPane({
   streaming: boolean;
   active: boolean;
   wsConnected: boolean;
+  auditEvents: AuditEvent[];
+  loaderFrameIndex: number;
   onSend: (t: string) => void;
   onModeChange: (m: Session["mode"]) => void;
   onAbort: () => void;
@@ -199,10 +228,13 @@ export function ChatPane({
 
           {task && <ActiveTaskBox task={task} />}
           <ActionLog entries={actionLog} />
+          <AuditTail events={auditEvents} />
 
           <Box borderStyle="round" borderColor={focused ? "green" : streaming ? "yellow" : "gray"} marginTop={1}>
             {streaming ? (
-              <Text color="yellow"> working... (Esc abort)</Text>
+              <Text color="yellow">
+                working {BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length]} (Esc abort)
+              </Text>
             ) : focused ? (
               <TextInput
                 value={input}

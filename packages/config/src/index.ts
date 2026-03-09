@@ -76,6 +76,18 @@ const WorkflowTrackSchema = z.object({
   stages: z.array(z.string()).default([]),
 });
 
+const OrchestratorRolesSchema = z.object({
+  responder: z.string().default(""),
+  promoted_agents: z.array(z.string()).default([]),
+  skill_worker_agents: z.array(z.string()).default([]),
+});
+
+const IntentRouteConfigSchema = z.object({
+  keywords: z.array(z.string()).default([]),
+  required_tools: z.array(z.string()).default([]),
+  preferred_agent: z.string().optional(),
+});
+
 const IntegrationsSchema = z.object({
   slack: z
     .object({
@@ -101,81 +113,135 @@ const IntegrationsSchema = z.object({
     .default({}),
 });
 
-const ConfigSchema = z.object({
-  server: z.object({
-    port: z.coerce.number().int().default(3000),
-    host: z.string().default("0.0.0.0"),
-    secret: z.string().default("dev-secret"),
-  }),
-
-  db: z.object({
-    driver: z.enum(["sqlite", "postgres"]).default("sqlite"),
-    sqlite: z.object({ path: z.string().default("./data/companion.db") }),
-    postgres: z.object({ url: z.string().default("") }).optional(),
-  }),
-
-  vector: z.object({
-    backend: z.enum(["sqlite-vec", "qdrant"]).default("sqlite-vec"),
-    qdrant: z.object({ url: z.string(), collection: z.string() }).optional(),
-    embedding: z.object({
-      model: z.string().default("nomic-embed-text"),
-      dimensions: z.number().int().positive().default(768),
+const ConfigSchema = z
+  .object({
+    server: z.object({
+      port: z.coerce.number().int().default(3000),
+      host: z.string().default("0.0.0.0"),
+      secret: z.string().default("dev-secret"),
     }),
-  }),
 
-  models: z.record(z.string(), ModelSchema),
-
-  orchestrator: z.object({
-    model: z.string().default("local"),
-    max_rounds: z.number().int().positive().default(10),
-    verify_results: z.boolean().default(true),
-    workflow_tracks: z.record(z.string(), WorkflowTrackSchema).default({}),
-  }),
-
-  agents: z.record(z.string(), AgentSchema),
-  agents_dir: z.string().optional(),
-
-  memory: z.object({
-    context_window: z.object({
-      max_messages: z.number().int().positive().default(40),
-      max_tokens: z.number().int().positive().default(8000),
+    db: z.object({
+      driver: z.enum(["sqlite", "postgres"]).default("sqlite"),
+      sqlite: z.object({ path: z.string().default("./data/companion.db") }),
+      postgres: z.object({ url: z.string().default("") }).optional(),
     }),
-    sliding_window: z.object({
-      chunk_size: z.number().int().positive().default(2000),
-      page_size: z.number().int().positive().default(20),
-    }),
-    recall: z.object({
-      top_k: z.number().int().positive().default(5),
-      min_score: z.number().min(0).max(1).default(0.72),
-      cross_session: z.boolean().default(false),
-    }),
-    summarisation: z.object({
-      enabled: z.boolean().default(true),
-      trigger_at_messages: z.number().int().positive().default(60),
-      model: z.string().default("fast"),
-    }),
-  }),
 
-  mode: z.object({
-    default: z.string().default("local"),
-    presets: z.record(z.string(), z.object({ description: z.string() })),
-  }),
-
-  integrations: IntegrationsSchema.default({}),
-
-  tools: z
-    .record(
-      z.string(),
-      z.object({
-        image: z.string().optional(),
-        timeout_seconds: z.number().int().positive().default(30),
-        allow_network: z.boolean().default(false),
+    vector: z.object({
+      backend: z.enum(["sqlite-vec", "qdrant"]).default("sqlite-vec"),
+      qdrant: z.object({ url: z.string(), collection: z.string() }).optional(),
+      embedding: z.object({
+        model: z.string().default("nomic-embed-text"),
+        dimensions: z.number().int().positive().default(768),
       }),
-    )
-    .default({}),
+    }),
 
-  sandbox: SandboxSchema.default({}),
-});
+    models: z.record(z.string(), ModelSchema),
+
+    orchestrator: z.object({
+      model: z.string().default("local"),
+      max_rounds: z.number().int().positive().default(10),
+      verify_results: z.boolean().default(true),
+      workflow_tracks: z.record(z.string(), WorkflowTrackSchema).default({}),
+      roles: OrchestratorRolesSchema.default({}),
+      intent_routes: z.array(IntentRouteConfigSchema).default([]),
+    }),
+
+    agents: z.record(z.string(), AgentSchema),
+    agents_dir: z.string().optional(),
+
+    memory: z.object({
+      context_window: z.object({
+        max_messages: z.number().int().positive().default(40),
+        max_tokens: z.number().int().positive().default(8000),
+      }),
+      sliding_window: z.object({
+        chunk_size: z.number().int().positive().default(2000),
+        page_size: z.number().int().positive().default(20),
+      }),
+      recall: z.object({
+        top_k: z.number().int().positive().default(5),
+        min_score: z.number().min(0).max(1).default(0.72),
+        cross_session: z.boolean().default(false),
+      }),
+      summarisation: z.object({
+        enabled: z.boolean().default(true),
+        trigger_at_messages: z.number().int().positive().default(60),
+        model: z.string().default("fast"),
+      }),
+    }),
+
+    mode: z.object({
+      default: z.string().default("local"),
+      presets: z.record(z.string(), z.object({ description: z.string() })),
+    }),
+
+    integrations: IntegrationsSchema.default({}),
+
+    tools: z
+      .record(
+        z.string(),
+        z.object({
+          image: z.string().optional(),
+          timeout_seconds: z.number().int().positive().default(30),
+          allow_network: z.boolean().default(false),
+        }),
+      )
+      .default({}),
+
+    sandbox: SandboxSchema.default({}),
+  })
+  .superRefine((cfg, ctx) => {
+    const agentNames = new Set(Object.keys(cfg.agents));
+
+    const ensureKnownAgent = (agentName: string, path: (string | number)[], context: string): void => {
+      if (!agentNames.has(agentName)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: `${context} references unknown agent '${agentName}'`,
+        });
+      }
+    };
+
+    if (cfg.orchestrator.roles.responder) {
+      ensureKnownAgent(cfg.orchestrator.roles.responder, ["orchestrator", "roles", "responder"], "orchestrator.roles");
+    }
+
+    for (let i = 0; i < cfg.orchestrator.roles.promoted_agents.length; i++) {
+      const agentName = cfg.orchestrator.roles.promoted_agents[i];
+      if (!agentName) continue;
+      ensureKnownAgent(
+        agentName,
+        ["orchestrator", "roles", "promoted_agents", i],
+        "orchestrator.roles.promoted_agents",
+      );
+    }
+
+    for (let i = 0; i < cfg.orchestrator.roles.skill_worker_agents.length; i++) {
+      const agentName = cfg.orchestrator.roles.skill_worker_agents[i];
+      if (!agentName) continue;
+      ensureKnownAgent(
+        agentName,
+        ["orchestrator", "roles", "skill_worker_agents", i],
+        "orchestrator.roles.skill_worker_agents",
+      );
+    }
+
+    for (const [trackName, trackConfig] of Object.entries(cfg.orchestrator.workflow_tracks)) {
+      for (let i = 0; i < trackConfig.stages.length; i++) {
+        const stageAgent = trackConfig.stages[i];
+        if (!stageAgent) continue;
+        ensureKnownAgent(stageAgent, ["orchestrator", "workflow_tracks", trackName, "stages", i], "workflow track");
+      }
+    }
+
+    for (let i = 0; i < cfg.orchestrator.intent_routes.length; i++) {
+      const preferred = cfg.orchestrator.intent_routes[i]?.preferred_agent;
+      if (!preferred) continue;
+      ensureKnownAgent(preferred, ["orchestrator", "intent_routes", i, "preferred_agent"], "intent route");
+    }
+  });
 
 export type Config = z.infer<typeof ConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelSchema>;

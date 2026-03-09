@@ -53,6 +53,9 @@ export const handleWebSocketEnvelope = ({
 
     if (envelope.type === WS_MESSAGE_TYPE.AgentThought) {
       const thought = String(payload.text ?? "");
+      if (thought) {
+        addLogEntry(`thought ${thought.slice(0, 72)}`);
+      }
       setTask((previousTask) =>
         previousTask
           ? { ...previousTask, thought }

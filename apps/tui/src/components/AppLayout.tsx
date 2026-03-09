@@ -7,7 +7,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { Box, Text } from "ink";
 import type React from "react";
-import { LOADER_FRAMES } from "../constants";
+import { BRAILLE_SHIFT_FRAMES } from "../constants";
 import type { SessionRepository } from "../sdk/session-repository";
 import { type ActiveTask, type AuditEvent, type Caps, type LogEntry, type Msg, Pane, type Session } from "../types";
 import { CapabilitiesPane } from "./CapabilitiesPane";
@@ -64,6 +64,13 @@ const getThinkingLabel = (task: ActiveTask | null): string => {
   return `agent:${task.agent}${withTool}`;
 };
 
+const taskColor = (task: ActiveTask | null): string => {
+  if (!task) return "yellow";
+  if (task.status === "running_tool") return "cyan";
+  if (task.status === "synthesizing") return "green";
+  return "yellow";
+};
+
 export const AppLayout = ({
   pane,
   sessions,
@@ -98,9 +105,9 @@ export const AppLayout = ({
       </Text>
       <Text color="gray">Tab switch / type up/down scroll /wd &lt;path&gt; q quit</Text>
       {(streaming || task) && (
-        <Text color="yellow">
+        <Text color={taskColor(task)}>
           {getThinkingLabel(task)}
-          {LOADER_FRAMES[loaderFrameIndex]}
+          {BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length]}
         </Text>
       )}
       {statusMsg && <Text color="red"> {statusMsg}</Text>}
@@ -118,10 +125,12 @@ export const AppLayout = ({
         messages={messages}
         task={task}
         actionLog={actionLog}
+        auditEvents={auditEvents}
         workingDir={workingDir}
         streaming={streaming}
         active={pane === Pane.Chat}
         wsConnected={wsConnected}
+        loaderFrameIndex={loaderFrameIndex}
         onSend={(text) => {
           const raw = text.trim();
           if (!raw) return;

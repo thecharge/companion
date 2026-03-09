@@ -11,6 +11,12 @@ import type { AgentRunParams } from "./types";
 
 const log = new Logger("agents");
 
+const asksForLiveSystemLoad = (message: string): boolean => {
+  return /\b(system\s+load|cpu\s+load|load\s+average|uptime|memory\s+usage|disk\s+usage|current\s+load|host\s+load)\b/i.test(
+    message,
+  );
+};
+
 export class AgentRunner {
   constructor(
     private agentName: string,
@@ -42,10 +48,15 @@ export class AgentRunner {
       .filter((t): t is OAITool => t !== undefined);
 
     const isReAct = !modelSupportsTools(modelCfg.model) && tools.length > 0;
+    const loadCheck = asksForLiveSystemLoad(params.user_message);
+    const hasShellTool = agentCfg.tools.includes("run_shell");
     const systemPrompt = [
       `You are the ${this.agentName} agent. ${agentCfg.description}`,
       `Goal: ${params.blackboard.goal || params.user_message}`,
       `Context:\n${params.blackboard.summary()}`,
+      loadCheck && hasShellTool
+        ? "For system-load questions, you MUST call run_shell to obtain live values before answering. Do not estimate or fabricate numbers."
+        : "",
       tools.length
         ? isReAct
           ? "You have tools. YOU must call them yourself by outputting JSON. DO NOT tell the user to run commands. DO NOT say 'use a tool'. YOU are the one calling the tools."

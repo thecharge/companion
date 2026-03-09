@@ -171,7 +171,7 @@ packages/
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
 - Persistent audit events are written to `./data/audit-events.ndjson` (override: `COMPANION_AUDIT_LOG_PATH`) and exposed via `/audit/events`.
 - Shared enum-like constants now exist in `packages/core` for key literals.
-- Agent orchestration policy constants are centralized in `packages/agents/src/policy-config.ts` and base IDs in `packages/agents/src/agent-ids.ts`.
+- Agent orchestration roles, intent routes, and workflow tracks are externally defined in YAML (`companion.yaml` under `orchestrator.*`) and validated by `@companion/config`.
 - Multi-lane workflow orchestration is available for product-delivery and operations tracks.
 
 ## Build, Test, Typecheck
