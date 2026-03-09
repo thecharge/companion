@@ -41,6 +41,8 @@ The codebase is functional but still evolving. This repository now includes a co
 ```bash
 cp .env.example .env
 # edit .env as needed
+cp companion.yaml.example companion.yaml
+# edit companion.yaml as needed
 
 bun install
 bun run pull      # pulls default local model
