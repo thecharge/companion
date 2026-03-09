@@ -48,6 +48,115 @@ Orchestration validation quick checks:
 - Router picks only configured agents; if an invalid target is produced, runtime falls back to a valid configured agent.
 - Agent loop is bounded by `max_turns` and returns a terminal state (`done`, `max_turns`, `error`, or `cancelled`).
 
+## Deterministic Tool Invocation (JSON)
+
+For reproducible automation or verification runs, you can send direct tool calls as JSON in `content`.
+This bypasses model planning and executes tools in-order with the request `working_dir`.
+
+Single tool call:
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content":"{\"tool\":\"write_file\",\"args\":{\"path\":\"proove.sh\",\"content\":\"#!/usr/bin/env bash\\necho hello\\n\"}}",
+    "working_dir":"/tmp",
+    "stream":false
+  }'
+```
+
+Multiple tool calls:
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content":"{\"tool_calls\":[{\"tool\":\"write_file\",\"args\":{\"path\":\"proove.sh\",\"content\":\"#!/usr/bin/env bash\\necho hello\\n\"}},{\"tool\":\"run_shell\",\"args\":{\"command\":\"chmod +x proove.sh\"}}]}",
+    "working_dir":"/tmp",
+    "stream":false
+  }'
+```
+
+Notes:
+- Paths remain sandbox/path-safety constrained to `working_dir`.
+- Tool names and args must match registered tool schemas.
+
+## End-to-End Proof Script
+
+Use this single script to prove Companion can create:
+- `/tmp/proove.sh`
+- `/tmp/proove_vars.py`
+- `skills/tmp-proof-skill-direct/skill.yaml`
+
+```bash
+cat >/tmp/companion-proof.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) Start server with explicit auth and custom port
+COMPANION_PORT=3212 COMPANION_SECRET=proof2-secret bun run server >/tmp/companion-proof-server.log 2>&1 &
+SERVER_PID=$!
+trap 'kill "$SERVER_PID" >/dev/null 2>&1 || true' EXIT
+sleep 2
+
+API=http://localhost:3212
+AUTH='Authorization: Bearer proof2-secret'
+
+# 2) Create session (local mode for deterministic local execution)
+SID=$(curl -sS -X POST "$API/sessions" -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"title":"Deterministic Proof","goal":"prove direct tools","mode":"local"}' \
+  | bun -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(0,"utf8"));process.stdout.write(j.session.id)')
+
+echo "SESSION_ID=$SID"
+
+# 3) Create /tmp/proove.sh (write_file + chmod via shell)
+CONTENT1='{"tool_calls":[{"tool":"write_file","args":{"path":"proove.sh","content":"#!/usr/bin/env bash\necho HOSTNAME=$HOSTNAME\necho USER=$USER\necho PWD=$PWD\necho DATE=$(date -Iseconds)\necho UPTIME=$(uptime)\n"}},{"tool":"run_shell","args":{"command":"chmod +x proove.sh"}}]}'
+PAY1=$(printf '%s' "$CONTENT1" | bun -e 'const fs=require("fs");const c=fs.readFileSync(0,"utf8");process.stdout.write(JSON.stringify({content:c,working_dir:"/tmp",stream:false}))')
+curl -sS -X POST "$API/sessions/$SID/messages" -H "$AUTH" -H 'Content-Type: application/json' -d "$PAY1" >/dev/null
+
+# 4) Create /tmp/proove_vars.py
+CONTENT2='{"tool":"write_file","args":{"path":"proove_vars.py","content":"import os,sys\nprint(\"python\", sys.version.split()[0])\nprint(\"cwd\", os.getcwd())\nfor k in [\"USER\",\"HOME\",\"SHELL\"]:\n    print(k, os.getenv(k, \"\"))\n"}}'
+PAY2=$(printf '%s' "$CONTENT2" | bun -e 'const fs=require("fs");const c=fs.readFileSync(0,"utf8");process.stdout.write(JSON.stringify({content:c,working_dir:"/tmp",stream:false}))')
+curl -sS -X POST "$API/sessions/$SID/messages" -H "$AUTH" -H 'Content-Type: application/json' -d "$PAY2" >/dev/null
+
+# 5) Create skill scaffold via create_skill_template
+CONTENT3='{"tool":"create_skill_template","args":{"skill_name":"tmp-proof-skill-direct","description":"Direct proof skill scaffold","tool_name":"proof_echo","arg_name":"line"}}'
+PAY3=$(printf '%s' "$CONTENT3" | bun -e 'const fs=require("fs");const c=fs.readFileSync(0,"utf8");process.stdout.write(JSON.stringify({content:c,working_dir:"/home/thecharge/workspace/companion",stream:false}))')
+curl -sS -X POST "$API/sessions/$SID/messages" -H "$AUTH" -H 'Content-Type: application/json' -d "$PAY3" >/dev/null
+
+sleep 2
+
+echo '--- assistant outputs ---'
+curl -sS "$API/sessions/$SID/messages?limit=100" -H "$AUTH" \
+  | bun -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(0,"utf8"));for (const m of (j.messages||[]).filter(x=>x.role==="assistant")){console.log("---");console.log(m.content)}'
+
+echo '--- verify /tmp files ---'
+ls -l /tmp/proove.sh /tmp/proove_vars.py
+
+echo '--- /tmp/proove.sh ---'
+sed -n '1,120p' /tmp/proove.sh
+
+echo '--- /tmp/proove_vars.py ---'
+sed -n '1,120p' /tmp/proove_vars.py
+
+echo '--- run artifacts ---'
+bash /tmp/proove.sh | sed -n '1,20p'
+python3 /tmp/proove_vars.py | sed -n '1,20p'
+
+echo '--- verify skill scaffold ---'
+find /home/thecharge/workspace/companion/skills/tmp-proof-skill-direct -maxdepth 2 -type f -print
+sed -n '1,200p' /home/thecharge/workspace/companion/skills/tmp-proof-skill-direct/skill.yaml
+EOF
+
+bash /tmp/companion-proof.sh
+```
+
+Expected result:
+- The two `/tmp` files exist and print runtime/env values.
+- `skills/tmp-proof-skill-direct/skill.yaml` exists with tool `proof_echo`.
+
 ```bash
 curl -s -X POST http://localhost:3000/sessions \
   -H "Authorization: Bearer dev-secret" \

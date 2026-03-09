@@ -1,10 +1,10 @@
 import type { Config } from "@companion/config";
-import { type Blackboard, Logger, bus } from "@companion/core";
+import { type Blackboard, Logger, type SessionId, bus } from "@companion/core";
 import type { DB } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import { loadSkillsDir, registerSkills } from "@companion/skills";
-import type { ToolRegistry } from "@companion/tools";
+import type { ToolContext, ToolRegistry } from "@companion/tools";
 import { AgentRunner } from "./agent-runner";
 import { hasFileTaskIntent, hasSkillIntent, hasSystemTaskIntent } from "./patterns";
 import { buildOrchestratorPrompt } from "./prompts";
@@ -54,6 +54,56 @@ function inferForcedAgent(message: string, cfg: Config): string | null {
   return null;
 }
 
+interface DirectToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+function parseDirectToolCalls(raw: string): DirectToolCall[] | null {
+  const text = raw.trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) return null;
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+
+    if (Array.isArray(parsed)) {
+      const calls = parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const tool = String((entry as Record<string, unknown>).tool ?? "").trim();
+          const args = (entry as Record<string, unknown>).args;
+          if (!tool || !args || typeof args !== "object" || Array.isArray(args)) return null;
+          return { tool, args: args as Record<string, unknown> };
+        })
+        .filter((entry): entry is DirectToolCall => Boolean(entry));
+      return calls.length ? calls : null;
+    }
+
+    if (!parsed || typeof parsed !== "object") return null;
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.tool_calls)) {
+      const calls = obj.tool_calls
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const tool = String((entry as Record<string, unknown>).tool ?? "").trim();
+          const args = (entry as Record<string, unknown>).args;
+          if (!tool || !args || typeof args !== "object" || Array.isArray(args)) return null;
+          return { tool, args: args as Record<string, unknown> };
+        })
+        .filter((entry): entry is DirectToolCall => Boolean(entry));
+      return calls.length ? calls : null;
+    }
+
+    if (typeof obj.tool === "string" && obj.args && typeof obj.args === "object" && !Array.isArray(obj.args)) {
+      return [{ tool: obj.tool, args: obj.args as Record<string, unknown> }];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export class SessionProcessor {
   constructor(
     private cfg: Config,
@@ -67,6 +117,12 @@ export class SessionProcessor {
     const runtimeCfg = this.runtimeConfig(mode);
 
     if (signal?.aborted) return { reply: "", blackboard, stopped_reason: "cancelled" };
+
+    const directToolReply = await this.tryDirectToolExecution(session_id, user_message, working_dir, runtimeCfg);
+    if (directToolReply) {
+      blackboard.appendObservation(`[direct-tools] ${directToolReply.slice(0, 400)}`);
+      return { reply: directToolReply, blackboard, stopped_reason: "done" };
+    }
 
     const orchAlias = runtimeCfg.orchestrator.model;
     const orchCfg = runtimeCfg.models[orchAlias];
@@ -422,5 +478,50 @@ export class SessionProcessor {
     }
 
     return this.cfg;
+  }
+
+  private async tryDirectToolExecution(
+    sessionId: SessionId,
+    userMessage: string,
+    workingDir: string,
+    runtimeCfg: Config,
+  ): Promise<string | null> {
+    const directCalls = parseDirectToolCalls(userMessage);
+    if (!directCalls?.length) return null;
+
+    const toolContext: ToolContext = {
+      session_id: sessionId,
+      working_dir: workingDir,
+      db: this.db,
+      cfg: runtimeCfg,
+    };
+
+    const outputs: string[] = [];
+    for (let i = 0; i < directCalls.length; i++) {
+      const call = directCalls[i];
+      if (!call) continue;
+
+      if (!this.registry.get(call.tool)) {
+        outputs.push(`[error] unknown tool: ${call.tool}`);
+        continue;
+      }
+
+      const result = await this.registry.run(
+        {
+          id: `direct_${Date.now()}_${i}`,
+          tool_name: call.tool,
+          args: call.args,
+        },
+        toolContext,
+      );
+
+      if (result.error) {
+        outputs.push(`[error] ${call.tool}: ${result.error}`);
+      } else {
+        outputs.push(`[ok] ${call.tool}: ${result.result ?? "done"}`);
+      }
+    }
+
+    return outputs.join("\n");
   }
 }

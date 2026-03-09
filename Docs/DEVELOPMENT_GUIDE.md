@@ -158,6 +158,20 @@ Default examples in root config:
 - `product_delivery`: `planner -> prd_designer -> delivery_manager -> engineer -> responder`
 - `operations`: `planner -> operations_commander -> analyst -> engineer -> responder`
 
+## Deterministic Tool Mode
+
+`SessionProcessor` supports direct JSON tool execution for deterministic API automation runs.
+
+Accepted `content` shapes:
+- `{"tool":"write_file","args":{...}}`
+- `{"tool_calls":[{"tool":"...","args":{...}}, ...]}`
+- `[ {"tool":"...","args":{...}} ]`
+
+Implementation location:
+- `packages/agents/src/index.ts` (`parseDirectToolCalls` and `tryDirectToolExecution`)
+
+Use this mode for reproducible smoke tests and integration proofs when LLM planning variance is undesirable.
+
 ## Folder-Specific Config Overrides
 
 Companion can load nearest folder override files upward from `working_dir`:
