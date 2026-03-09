@@ -6,7 +6,7 @@ import type { MemoryService } from "@companion/memory";
 import { loadSkillsDir, registerSkills } from "@companion/skills";
 import type { ToolContext, ToolRegistry } from "@companion/tools";
 import { AgentRunner } from "./agent-runner";
-import { hasFileTaskIntent, hasSkillIntent, hasSystemTaskIntent } from "./patterns";
+import { hasFileTaskIntent, hasSkillIntent, hasSystemTaskIntent, hasWeatherTaskIntent } from "./patterns";
 import { buildOrchestratorPrompt } from "./prompts";
 import {
   PENDING_SKILL_KEY,
@@ -44,6 +44,11 @@ function hasExplicitSkillIntent(message: string): boolean {
 }
 
 function inferForcedAgent(message: string, cfg: Config): string | null {
+  const analyst = cfg.agents.analyst;
+  if (analyst?.tools.includes("weather_lookup") && hasWeatherTaskIntent(message)) {
+    return "analyst";
+  }
+
   const engineer = cfg.agents.engineer;
   if (!engineer) return null;
 

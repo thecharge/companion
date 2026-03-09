@@ -53,6 +53,7 @@ export const App = () => {
   const abortCtrlRef = useRef<AbortController | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayMsRef = useRef(INITIAL_RECONNECT_DELAY_MS);
+  const socketGenerationRef = useRef(0);
   const currentSessionIdRef = useRef("");
   const pendingAssistantMessageIdRef = useRef<string | null>(null);
 
@@ -116,6 +117,8 @@ export const App = () => {
   const connectWebSocket = useCallback(
     (session: Session) => {
       clearReconnectTimer();
+      socketGenerationRef.current += 1;
+      const generation = socketGenerationRef.current;
       wsRef.current?.close();
 
       const ws = new WebSocket(`${WS_URL}/ws?session=${session.id}&token=${SECRET}`);
@@ -129,6 +132,10 @@ export const App = () => {
       ws.onmessage = (event) => onSocketMessage(String(event.data));
       ws.onerror = () => setWsConnected(false);
       ws.onclose = () => {
+        // Ignore close from stale sockets that were intentionally replaced.
+        if (generation !== socketGenerationRef.current) {
+          return;
+        }
         setWsConnected(false);
         if (currentSessionIdRef.current !== session.id) {
           return;
@@ -137,6 +144,7 @@ export const App = () => {
         const delay = Math.min(reconnectDelayMsRef.current, MAX_RECONNECT_DELAY_MS);
         reconnectDelayMsRef.current = delay * 2;
         addLogEntry(`WS retry ${delay / 1000}s`);
+        clearReconnectTimer();
         reconnectTimerRef.current = setTimeout(() => connectWebSocket(session), delay);
       };
     },

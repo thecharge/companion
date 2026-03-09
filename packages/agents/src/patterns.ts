@@ -14,6 +14,11 @@ const SYSTEM_TASK_PATTERNS = [
   /\b(current\s+load|host\s+load)\b/i,
 ] as const;
 
+const WEATHER_TASK_PATTERNS = [
+  /\b(weather|temperature|forecast|rain|wind|humidity)\b/i,
+  /\bwhat(?:'s| is)\s+the\s+weather\b/i,
+] as const;
+
 export function hasSkillIntent(message: string): boolean {
   return SKILL_INTENT_PATTERNS.some((pattern) => pattern.test(message));
 }
@@ -24,4 +29,8 @@ export function hasFileTaskIntent(message: string): boolean {
 
 export function hasSystemTaskIntent(message: string): boolean {
   return SYSTEM_TASK_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+export function hasWeatherTaskIntent(message: string): boolean {
+  return WEATHER_TASK_PATTERNS.some((pattern) => pattern.test(message));
 }

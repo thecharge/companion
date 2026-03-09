@@ -121,7 +121,10 @@ export const AppLayout = ({
         active={pane === Pane.Chat}
         wsConnected={wsConnected}
         onSend={(text) => {
-          const normalized = text.startsWith("/") ? text : `/${text}`;
+          const raw = text.trim();
+          if (!raw) return;
+
+          const normalized = raw.startsWith("/") ? raw : `/${raw}`;
 
           if (normalized === "/wd") {
             addLogEntry(`working_dir ${workingDir}`);
@@ -152,7 +155,13 @@ export const AppLayout = ({
             return;
           }
 
-          void sendMessage(text);
+          const plain = raw.startsWith("/") ? raw.slice(1).trimStart() : raw;
+          if (!plain) {
+            addLogEntry("empty message ignored");
+            return;
+          }
+
+          void sendMessage(plain);
         }}
         onModeChange={(mode) => {
           if (!activeSession) {

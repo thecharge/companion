@@ -52,8 +52,16 @@ export const handleWebSocketEnvelope = ({
     }
 
     if (envelope.type === WS_MESSAGE_TYPE.AgentThought) {
+      const thought = String(payload.text ?? "");
       setTask((previousTask) =>
-        previousTask ? { ...previousTask, thought: String(payload.text ?? "") } : previousTask,
+        previousTask
+          ? { ...previousTask, thought }
+          : {
+              agent: String(payload.agent ?? "assistant"),
+              thought,
+              status: TaskStatus.Thinking,
+              since: Date.now(),
+            },
       );
       return;
     }

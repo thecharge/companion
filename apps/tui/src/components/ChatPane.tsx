@@ -123,6 +123,11 @@ export function ChatPane({
       return;
     }
 
+    if (key.return && !focused) {
+      setFocus(true);
+      return;
+    }
+
     if (!focused) {
       if (key.upArrow) setScroll((s) => Math.min(s + 1, Math.max(0, messages.length - VISIBLE_MESSAGES)));
       if (key.downArrow) setScroll((s) => Math.max(0, s - 1));
@@ -210,7 +215,7 @@ export function ChatPane({
                 placeholder="Message..."
               />
             ) : (
-              <Text color="gray"> / type up/down scroll 1/2/3 mode /wd &lt;path&gt; q quit</Text>
+              <Text color="gray"> Enter or / to type, up/down scroll, 1/2/3 mode, /wd &lt;path&gt;</Text>
             )}
           </Box>
         </>
