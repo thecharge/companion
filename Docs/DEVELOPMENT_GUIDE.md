@@ -40,6 +40,20 @@ bun run typecheck
 bun run test
 ```
 
+Generate runtime and provider proof reports:
+
+```bash
+bun run proof:runtime
+bun run proof:providers
+```
+
+Run strict proof gates (recommended for production branches):
+
+```bash
+bun run proof:runtime -- --strict
+bun run proof:providers -- --strict
+```
+
 Run only impacted packages:
 
 ```bash
@@ -106,3 +120,13 @@ bun run readiness
 - Disable direct fallback in production.
 - Enable signed artifacts, SBOM, and vulnerability scanning.
 - Add centralized audit logging pipeline.
+
+## GitHub Governance Files
+
+- `.github/ISSUE_TEMPLATE/bug_report.yml` for regression/defect reports.
+- `.github/ISSUE_TEMPLATE/feature_request.yml` for scoped feature proposals.
+- `.github/ISSUE_TEMPLATE/security_request.yml` for private security intake.
+- `.github/dependabot.yml` for free weekly dependency and action updates.
+- `.github/workflows/ci.yml` for lint/typecheck/test enforcement.
+- `.github/workflows/dependency-review.yml` for pull-request dependency risk checks.
+- `.github/workflows/proof.yml` for readiness and provider proof automation.

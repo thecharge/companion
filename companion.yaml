@@ -59,7 +59,7 @@ agents:
   analyst:
     model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Reads and analyses documents, code, and data. Produces structured observations."
-    tools:       [read_file, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills]
+    tools:       [read_file, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills, runtime_posture, provider_matrix]
     reads_from:  [goal, observations]
     writes_to:   [observations]
     max_turns:   6

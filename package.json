@@ -14,7 +14,9 @@
     "server": "bun run apps/server/src/index.ts",
     "tui": "bun run apps/tui/src/index.tsx",
     "pull": "bun run scripts/pull.ts",
-    "readiness": "bash scripts/readiness-check.sh"
+    "readiness": "bash scripts/readiness-check.sh",
+    "proof:runtime": "bun run scripts/runtime-proof.ts",
+    "proof:providers": "bun run scripts/provider-proof.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

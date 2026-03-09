@@ -10,6 +10,11 @@ Companion is designed to run in two realities:
 - Local-first for privacy and zero cloud cost
 - Hybrid/cloud-first for higher capability and team/enterprise deployment
 
+[![CI](https://img.shields.io/github/actions/workflow/status/thecharge/companion/ci.yml?branch=main&label=ci)](https://github.com/thecharge/companion/actions/workflows/ci.yml)
+[![Readiness Proof](https://img.shields.io/github/actions/workflow/status/thecharge/companion/proof.yml?branch=main&label=proof)](https://github.com/thecharge/companion/actions/workflows/proof.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-025E8C)](https://github.com/thecharge/companion/security/dependabot)
+[![License](https://img.shields.io/github/license/thecharge/companion)](LICENSE)
+
 ## Current Status
 
 The codebase is functional but still evolving. This repository now includes a concrete production roadmap, compliance readiness plan, security controls, and extensibility guides in `Docs/`.
@@ -18,6 +23,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Delivery roadmap: `Docs/PRODUCTION_ROADMAP.md`
 - Compliance readiness (SOC 2 / ISO 27001 / PCI DSS): `Docs/COMPLIANCE_READINESS.md`
 - Security baseline: `Docs/SECURITY.md`
+- Verification proof guide: `Docs/PROOF.md`
 - Extensibility and pipelines: `Docs/EXTENSIBILITY_GUIDE.md`
 - Real usage examples: `Docs/EXAMPLES.md`
 - Usage guide: `Docs/USAGE_GUIDE.md`
@@ -184,6 +190,53 @@ End-to-end verification matrix:
 
 Lint policy note:
 - `biome.json` disables `complexity.useLiteralKeys` and `style.noNonNullAssertion` to keep lint actionable for this codebase while preserving strict compile and test gates.
+
+## Governance and Automation
+
+- GitHub issue templates:
+  - `.github/ISSUE_TEMPLATE/bug_report.yml`
+  - `.github/ISSUE_TEMPLATE/feature_request.yml`
+  - `.github/ISSUE_TEMPLATE/security_request.yml`
+- Dependabot updates: `.github/dependabot.yml`
+- CI and dependency review workflows:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/dependency-review.yml`
+- Readiness proof workflow: `.github/workflows/proof.yml`
+
+## Readiness Proof Commands
+
+Runtime and compliance posture snapshot:
+
+```bash
+bun run proof:runtime
+```
+
+Strict runtime gate (fails on warnings):
+
+```bash
+bun run proof:runtime -- --strict
+```
+
+Provider readiness report:
+
+```bash
+bun run proof:providers
+```
+
+Strict provider gate (fails if any configured provider is missing keys or unreachable):
+
+```bash
+bun run proof:providers -- --strict
+```
+
+## Repository Stats URLs
+
+- Build status: `https://github.com/thecharge/companion/actions/workflows/ci.yml`
+- Proof status: `https://github.com/thecharge/companion/actions/workflows/proof.yml`
+- Repo size: `https://img.shields.io/github/repo-size/thecharge/companion`
+- Top language: `https://img.shields.io/github/languages/top/thecharge/companion`
+- Open issues: `https://img.shields.io/github/issues/thecharge/companion`
+- Latest release: `https://img.shields.io/github/v/release/thecharge/companion`
 
 ## Deployment
 
