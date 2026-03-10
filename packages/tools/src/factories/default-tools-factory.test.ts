@@ -5,7 +5,12 @@ import { createDefaultTools } from "./default-tools-factory";
 
 function createConfig(): Config {
   return {
-    server: { port: 3000, host: "127.0.0.1", secret: "test" },
+    server: {
+      port: 3000,
+      host: "127.0.0.1",
+      secret: "test",
+      idempotency: { enabled: true, ttl_seconds: 86400, max_entries: 10000 },
+    },
     db: { driver: "sqlite", sqlite: { path: ":memory:" }, postgres: { url: "" } },
     vector: { backend: "sqlite-vec", embedding: { model: "embed", dimensions: 3 } },
     models: {

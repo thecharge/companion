@@ -79,8 +79,8 @@ integrations:
     required_passphrase: ${SLACK_REQUIRED_PASSPHRASE:-}
     mode: balanced
     default_session_title: "Slack Session"
-    max_message_chars: 2000
-    max_events_per_minute: 30
+    max_message_chars: 16000
+    max_events_per_minute: 240
 
   telegram:
     enabled: true
@@ -91,8 +91,8 @@ integrations:
     required_passphrase: ${TELEGRAM_REQUIRED_PASSPHRASE:-}
     mode: balanced
     default_session_title: "Telegram Session"
-    max_message_chars: 2000
-    max_events_per_minute: 30
+    max_message_chars: 16000
+    max_events_per_minute: 240
 ```
 
 Recommended env values:
@@ -124,8 +124,8 @@ Integration option reference (verbose meanings):
 | Slack Required Passphrase | `integrations.slack.required_passphrase` / `SLACK_REQUIRED_PASSPHRASE` | empty | Optional required message prefix for step-up trust control. |
 | Slack Runtime Mode Override | `integrations.slack.mode` / `SLACK_MODE` | unset (`balanced` in example env) | Optional per-integration mode override for sessions created from Slack events. |
 | Slack Session Title Template | `integrations.slack.default_session_title` | `Slack Session` | Default title assigned to sessions created by Slack messages. |
-| Slack Max Message Characters | `integrations.slack.max_message_chars` | `2000` | Character limit before message guard rejects/ignores unsafe or oversized payloads. |
-| Slack Max Events Per Minute | `integrations.slack.max_events_per_minute` | `30` | Per-channel ingress rate limit to control abuse/spam. |
+| Slack Max Message Characters | `integrations.slack.max_message_chars` | `16000` | Character limit before message guard rejects/ignores unsafe or oversized payloads. |
+| Slack Max Events Per Minute | `integrations.slack.max_events_per_minute` | `240` | Per-channel ingress rate limit to control abuse/spam. |
 | Telegram Enable Flag | `integrations.telegram.enabled` / `TELEGRAM_ENABLED` | `false` | Turns Telegram webhook handling on or off. |
 | Telegram Bot Token | `integrations.telegram.bot_token` / `TELEGRAM_BOT_TOKEN` | empty | Bot API token used to post replies into Telegram chats. |
 | Telegram Webhook Secret | `integrations.telegram.secret_token` / `TELEGRAM_SECRET_TOKEN` | empty | Expected secret in `x-telegram-bot-api-secret-token` header. |
@@ -134,8 +134,8 @@ Integration option reference (verbose meanings):
 | Telegram Required Passphrase | `integrations.telegram.required_passphrase` / `TELEGRAM_REQUIRED_PASSPHRASE` | empty | Optional required prefix users must include in messages. |
 | Telegram Runtime Mode Override | `integrations.telegram.mode` / `TELEGRAM_MODE` | unset (`balanced` in example env) | Optional per-integration mode override for Telegram-originated sessions. |
 | Telegram Session Title Template | `integrations.telegram.default_session_title` | `Telegram Session` | Default title assigned to sessions created by Telegram messages. |
-| Telegram Max Message Characters | `integrations.telegram.max_message_chars` | `2000` | Character limit before guard rejects/ignores oversized input. |
-| Telegram Max Events Per Minute | `integrations.telegram.max_events_per_minute` | `30` | Per-chat ingress rate limit for abuse protection. |
+| Telegram Max Message Characters | `integrations.telegram.max_message_chars` | `16000` | Character limit before guard rejects/ignores oversized input. |
+| Telegram Max Events Per Minute | `integrations.telegram.max_events_per_minute` | `240` | Per-chat ingress rate limit for abuse protection. |
 
 For the complete global configuration matrix (all `companion.yaml` sections, env vars, runtime-only env vars, and override behavior), see:
 - `Docs/CONFIGURATION_GUIDE.md`

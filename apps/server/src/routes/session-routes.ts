@@ -31,6 +31,63 @@ import type { SessionMessageService } from "../services/session-message-service"
 
 const log = new Logger("server.session-routes");
 
+interface IdempotencyRecord {
+  fingerprint: string;
+  status: number;
+  body: unknown;
+  createdAt: number;
+}
+
+const idempotencyCache = new Map<string, IdempotencyRecord>();
+
+const stableStringify = (value: unknown): string => {
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  const objectValue = value as Record<string, unknown>;
+  const keys = Object.keys(objectValue).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`).join(",")}}`;
+};
+
+const idempotencyScopeKey = (method: string, pathName: string, key: string): string => `${method}:${pathName}:${key}`;
+
+const pruneIdempotencyCache = (maxEntries: number): void => {
+  if (idempotencyCache.size <= maxEntries) {
+    return;
+  }
+
+  const entries = [...idempotencyCache.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
+  const toDelete = entries.slice(0, idempotencyCache.size - maxEntries);
+  for (const [key] of toDelete) {
+    idempotencyCache.delete(key);
+  }
+};
+
+const getIdempotentReplay = (scopeKey: string, ttlMs: number): IdempotencyRecord | null => {
+  const record = idempotencyCache.get(scopeKey);
+  if (!record) return null;
+  if (Date.now() - record.createdAt > ttlMs) {
+    idempotencyCache.delete(scopeKey);
+    return null;
+  }
+  return record;
+};
+
+const storeIdempotentReplay = (
+  scopeKey: string,
+  record: Omit<IdempotencyRecord, "createdAt">,
+  maxEntries: number,
+): void => {
+  idempotencyCache.set(scopeKey, { ...record, createdAt: Date.now() });
+  pruneIdempotencyCache(maxEntries);
+};
+
+const replayJsonResponse = (record: IdempotencyRecord): Response => {
+  const response = Response.json(record.body, { status: record.status });
+  response.headers.set(HeaderName.IdempotentReplay, "true");
+  return response;
+};
+
 interface SessionPostBody {
   title?: string;
   goal?: string;
@@ -151,13 +208,39 @@ export const handleSessionRoutes = async (
     const body = await parseJsonBody<SessionPostBody>(req);
     if (!body) return invalidBodyResponse();
 
+    const idempotencyCfg = ctx.cfg.server.idempotency;
+    const idempotencyKey = req.headers.get(HeaderName.IdempotencyKey)?.trim();
+    const fingerprint = stableStringify({ title: body.title ?? "New Session", goal: body.goal, mode: body.mode });
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      const scopeKey = idempotencyScopeKey(method, pathName, idempotencyKey);
+      const cached = getIdempotentReplay(scopeKey, idempotencyCfg.ttl_seconds * 1000);
+      if (cached) {
+        if (cached.fingerprint !== fingerprint) {
+          return badRequestResponse("idempotency key reuse with different payload");
+        }
+        return replayJsonResponse(cached);
+      }
+    }
+
     const sessionId = asSession(newId());
     const title = body.title ?? "New Session";
     const goal = body.goal ?? title;
     const mode = (body.mode ?? ctx.cfg.mode.default) as SessionMode;
     const session = await ctx.db.sessions.create(sessionId, title, goal, mode);
     await auditLogService.recordHttpEvent({ action: "session_create", status: "ok", request: req, sessionId });
-    return Response.json({ session }, { status: HttpStatus.Created });
+    const createdPayload = { session };
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      storeIdempotentReplay(
+        idempotencyScopeKey(method, pathName, idempotencyKey),
+        {
+          fingerprint,
+          status: HttpStatus.Created,
+          body: createdPayload,
+        },
+        idempotencyCfg.max_entries,
+      );
+    }
+    return Response.json(createdPayload, { status: HttpStatus.Created });
   }
 
   const parsedSessionPath = parseSessionPath(pathName);
@@ -177,19 +260,71 @@ export const handleSessionRoutes = async (
     const body = await parseJsonBody<Record<string, unknown>>(req);
     if (!body) return invalidBodyResponse();
 
+    const idempotencyCfg = ctx.cfg.server.idempotency;
+    const idempotencyKey = req.headers.get(HeaderName.IdempotencyKey)?.trim();
+    const fingerprint = stableStringify(body);
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      const scopeKey = idempotencyScopeKey(method, `${pathName}:${sessionId}`, idempotencyKey);
+      const cached = getIdempotentReplay(scopeKey, idempotencyCfg.ttl_seconds * 1000);
+      if (cached) {
+        if (cached.fingerprint !== fingerprint) {
+          return badRequestResponse("idempotency key reuse with different payload");
+        }
+        return replayJsonResponse(cached);
+      }
+    }
+
     await ctx.db.sessions.update(sessionId, {
       title: body.title as string | undefined,
       mode: body.mode as SessionMode | undefined,
       status: body.status as SessionStatus | undefined,
     });
     await auditLogService.recordHttpEvent({ action: "session_patch", status: "ok", request: req, sessionId });
-    return Response.json({ ok: true });
+    const payload = { ok: true };
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      storeIdempotentReplay(
+        idempotencyScopeKey(method, `${pathName}:${sessionId}`, idempotencyKey),
+        {
+          fingerprint,
+          status: HttpStatus.Ok,
+          body: payload,
+        },
+        idempotencyCfg.max_entries,
+      );
+    }
+    return Response.json(payload);
   }
 
   if (subPath === "" && method === HttpMethod.Delete) {
+    const idempotencyCfg = ctx.cfg.server.idempotency;
+    const idempotencyKey = req.headers.get(HeaderName.IdempotencyKey)?.trim();
+    const fingerprint = stableStringify({ sessionId });
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      const scopeKey = idempotencyScopeKey(method, `${pathName}:${sessionId}`, idempotencyKey);
+      const cached = getIdempotentReplay(scopeKey, idempotencyCfg.ttl_seconds * 1000);
+      if (cached) {
+        if (cached.fingerprint !== fingerprint) {
+          return badRequestResponse("idempotency key reuse with different payload");
+        }
+        return replayJsonResponse(cached);
+      }
+    }
+
     await ctx.db.sessions.delete(sessionId);
     await auditLogService.recordHttpEvent({ action: "session_delete", status: "ok", request: req, sessionId });
-    return Response.json({ ok: true });
+    const payload = { ok: true };
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      storeIdempotentReplay(
+        idempotencyScopeKey(method, `${pathName}:${sessionId}`, idempotencyKey),
+        {
+          fingerprint,
+          status: HttpStatus.Ok,
+          body: payload,
+        },
+        idempotencyCfg.max_entries,
+      );
+    }
+    return Response.json(payload);
   }
 
   if (subPath === RoutePath.SessionMessagesSuffix && method === HttpMethod.Get) {
@@ -219,6 +354,25 @@ export const handleSessionRoutes = async (
     const content = body.content?.trim();
     if (!content) return badRequestResponse(ResponseError.ContentRequired);
 
+    const idempotencyCfg = ctx.cfg.server.idempotency;
+    const idempotencyKey = req.headers.get(HeaderName.IdempotencyKey)?.trim();
+    const fingerprint = stableStringify({
+      sessionId,
+      content,
+      stream: Boolean(body.stream),
+      working_dir: body.working_dir,
+    });
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      const scopeKey = idempotencyScopeKey(method, `${pathName}:${sessionId}:messages`, idempotencyKey);
+      const cached = getIdempotentReplay(scopeKey, idempotencyCfg.ttl_seconds * 1000);
+      if (cached) {
+        if (cached.fingerprint !== fingerprint) {
+          return badRequestResponse("idempotency key reuse with different payload");
+        }
+        return replayJsonResponse(cached);
+      }
+    }
+
     const workingDir = body.working_dir ?? process.cwd();
     log.info(`Accepted message for session ${sessionId}`, {
       stream: Boolean(body.stream),
@@ -234,7 +388,20 @@ export const handleSessionRoutes = async (
     await ctx.db.sessions.incrementMessageCount(sessionId);
     await auditLogService.recordHttpEvent({ action: "session_message_create", status: "ok", request: req, sessionId });
 
-    if (body.stream) return createSseResponse(sessionId, sessionMessageService, ctx, session, content, workingDir);
+    if (body.stream) {
+      if (idempotencyCfg.enabled && idempotencyKey) {
+        storeIdempotentReplay(
+          idempotencyScopeKey(method, `${pathName}:${sessionId}:messages`, idempotencyKey),
+          {
+            fingerprint,
+            status: HttpStatus.Accepted,
+            body: { accepted: true, replayable: false, stream: true },
+          },
+          idempotencyCfg.max_entries,
+        );
+      }
+      return createSseResponse(sessionId, sessionMessageService, ctx, session, content, workingDir);
+    }
 
     const abortController = new AbortController();
     ctx.activeCancels.set(sessionId, abortController);
@@ -242,7 +409,20 @@ export const handleSessionRoutes = async (
       .processMessage(sessionId, session, content, workingDir, abortController.signal)
       .finally(() => ctx.activeCancels.delete(sessionId));
 
-    return Response.json({ message: userMessage }, { status: HttpStatus.Accepted });
+    const payload = { message: userMessage };
+    if (idempotencyCfg.enabled && idempotencyKey) {
+      storeIdempotentReplay(
+        idempotencyScopeKey(method, `${pathName}:${sessionId}:messages`, idempotencyKey),
+        {
+          fingerprint,
+          status: HttpStatus.Accepted,
+          body: payload,
+        },
+        idempotencyCfg.max_entries,
+      );
+    }
+
+    return Response.json(payload, { status: HttpStatus.Accepted });
   }
 
   if (subPath === RoutePath.SessionBlackboardSuffix && method === HttpMethod.Get) {

@@ -16,7 +16,12 @@ import { PENDING_SKILL_KEY, type ProposedSkillSpec } from "./skill-acquisition";
 
 function createTestConfig(): Config {
   return {
-    server: { port: 3000, host: "127.0.0.1", secret: "test" },
+    server: {
+      port: 3000,
+      host: "127.0.0.1",
+      secret: "test",
+      idempotency: { enabled: true, ttl_seconds: 86400, max_entries: 10000 },
+    },
     db: { driver: "sqlite", sqlite: { path: ":memory:" }, postgres: { url: "" } },
     vector: {
       backend: "sqlite-vec",

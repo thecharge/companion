@@ -2,6 +2,10 @@ server:
   port:   ${COMPANION_PORT:-3000}
   host:   "0.0.0.0"
   secret: ${COMPANION_SECRET:-dev-secret}
+  idempotency:
+    enabled: true
+    ttl_seconds: 86400
+    max_entries: 10000
 
 db:
   driver: sqlite                  # sqlite | postgres
@@ -176,8 +180,8 @@ integrations:
     required_passphrase: ${SLACK_REQUIRED_PASSPHRASE:-}
     mode: ${SLACK_MODE:-balanced}
     default_session_title: "Slack Session"
-    max_message_chars: 2000
-    max_events_per_minute: 30
+    max_message_chars: 16000
+    max_events_per_minute: 240
   telegram:
     enabled: ${TELEGRAM_ENABLED:-false}
     bot_token: ${TELEGRAM_BOT_TOKEN:-}
@@ -187,8 +191,8 @@ integrations:
     required_passphrase: ${TELEGRAM_REQUIRED_PASSPHRASE:-}
     mode: ${TELEGRAM_MODE:-balanced}
     default_session_title: "Telegram Session"
-    max_message_chars: 2000
-    max_events_per_minute: 30
+    max_message_chars: 16000
+    max_events_per_minute: 240
 
 # ── Sandbox ───────────────────────────────────────────────────
 # Controls how run_shell and run_tests execute commands.

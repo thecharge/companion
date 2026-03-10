@@ -39,6 +39,8 @@ export const HeaderName = {
   Authorization: "Authorization",
   ApiKey: "x-api-key",
   RequestId: "x-request-id",
+  IdempotencyKey: "x-idempotency-key",
+  IdempotentReplay: "x-idempotent-replay",
   Upgrade: "Upgrade",
   ContentType: "Content-Type",
   CacheControl: "Cache-Control",

@@ -65,7 +65,12 @@ function createHarness(partialCfg?: HarnessOverrides) {
   const messages = new Map<string, MessageRow[]>();
 
   const baseCfg: Config = {
-    server: { port: 3000, host: "0.0.0.0", secret: "dev-secret" },
+    server: {
+      port: 3000,
+      host: "0.0.0.0",
+      secret: "dev-secret",
+      idempotency: { enabled: true, ttl_seconds: 86400, max_entries: 10000 },
+    },
     db: { driver: "sqlite", sqlite: { path: "./tmp.db" }, postgres: { url: "" } },
     vector: { backend: "sqlite-vec", embedding: { model: "nomic-embed-text", dimensions: 768 } },
     models: {

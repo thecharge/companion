@@ -175,8 +175,8 @@ packages/
 - Server runtime is now split by concern under `apps/server/src/{bootstrap,constants,middleware,routes,services,ws}`.
 - Server session processing now uses dedicated strategy/repository modules for summary model selection and session chat persistence.
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
-- Persistent audit events are written through `@companion/db`.
-- Optional NDJSON mirror is available when `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH` are set.
+- Persistent audit events are written through `@companion/db` (DB-only runtime mode).
+- Mutating session APIs are idempotent when clients provide `x-idempotency-key`.
 - Vector persistence is managed by `@companion/db` (`createVectorStore`) so memory storage uses the same driver boundary as sessions/messages.
 - Shared enum-like constants now exist in `packages/core` for key literals.
 - Agent orchestration roles, intent routes, and workflow tracks are externally defined in YAML (`companion.yaml` under `orchestrator.*`) and validated by `@companion/config`.

@@ -23,6 +23,10 @@ const looksLikeFileMutationClaim = (text: string): boolean => {
   );
 };
 
+const explicitlyAllowsReplay = (message: string): boolean => {
+  return /\b(run\s+again|rerun|re-run|repeat\s+that|do\s+it\s+again|execute\s+again|retry\b)\b/i.test(message);
+};
+
 export class AgentRunner {
   constructor(
     private agentName: string,
@@ -94,6 +98,8 @@ export class AgentRunner {
 
     let lastFailedSig: string | null = null;
     let successfulToolCalls = 0;
+    const successfulToolSigs = new Set<string>();
+    const allowReplay = explicitlyAllowsReplay(params.user_message);
 
     for (let turn = 0; turn < maxTurns; turn++) {
       if (signal?.aborted) {
@@ -213,6 +219,16 @@ export class AgentRunner {
         if (signal?.aborted) break;
 
         const sig = `${tc.function.name}:${tc.function.arguments}`;
+        if (!allowReplay && successfulToolSigs.has(sig)) {
+          toolResults.push({
+            role: "tool",
+            content: `[idempotent-skip] ${tc.function.name} already executed successfully with the same args in this run`,
+            tool_call_id: tc.id,
+            name: tc.function.name,
+          });
+          continue;
+        }
+
         if (sig === lastFailedSig) {
           toolResults.push({
             role: "tool",
@@ -257,6 +273,7 @@ export class AgentRunner {
         lastFailedSig = result.error ? sig : null;
         if (!result.error) {
           successfulToolCalls += 1;
+          successfulToolSigs.add(sig);
         }
         toolResults.push({
           role: "tool",

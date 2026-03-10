@@ -130,15 +130,13 @@ export const createAppContext = async (): Promise<AppContext> => {
   });
 
   const embedAvailable = await checkEmbedAvailability(embedBaseUrl, embedModelName);
-  const auditMirrorEnabled = (process.env.COMPANION_AUDIT_MIRROR_ENABLED ?? "false").trim().toLowerCase() === "true";
-  const auditLogPath = auditMirrorEnabled ? process.env.COMPANION_AUDIT_LOG_PATH?.trim() || undefined : undefined;
-  const auditLogRepository = new AuditLogRepository({ cfg, mirrorPath: auditLogPath });
+  const auditLogRepository = new AuditLogRepository({ cfg });
   const auditLogService = new AuditLogService(auditLogRepository);
   await auditLogService.initialize();
   log.info("audit repository initialized", {
     storage: cfg.db.driver,
-    audit_mirror_enabled: auditMirrorEnabled,
-    ndjson_mirror: auditLogPath ?? "disabled",
+    audit_mirror_enabled: false,
+    ndjson_mirror: "disabled (db-only mode)",
   });
   bus.on("*", (event) => {
     void auditLogService.recordBusEvent(event).catch((error) => {

@@ -37,6 +37,9 @@ Meaning:
 | `server.host` | none by default | `0.0.0.0` | Network interface for the HTTP server bind. Use `0.0.0.0` for containerized/public bind, `127.0.0.1` for local-only bind. |
 | `server.port` | `COMPANION_PORT` | `3000` | TCP port used by the Companion server. |
 | `server.secret` | `COMPANION_SECRET` | `dev-secret` | Bearer token required for authenticated API access. Must be changed for production. |
+| `server.idempotency.enabled` | none by default | `true` | Enables idempotent replay protections on mutating session APIs. |
+| `server.idempotency.ttl_seconds` | none by default | `86400` | Retention window for idempotency keys in seconds. |
+| `server.idempotency.max_entries` | none by default | `10000` | Maximum in-memory idempotency replay entries before oldest entries are pruned. |
 
 ## Database and Vector Store
 
@@ -140,8 +143,8 @@ Common provider env vars used in default config:
 | `integrations.slack.required_passphrase` | `SLACK_REQUIRED_PASSPHRASE` | empty | Optional message-prefix passphrase gate (step-up control). |
 | `integrations.slack.mode` | `SLACK_MODE` | unset | Optional mode override for Slack-originated sessions. |
 | `integrations.slack.default_session_title` | none by default | `Slack Session` | Title prefix/default for sessions created by Slack webhook messages. |
-| `integrations.slack.max_message_chars` | none by default | `2000` | Per-message character limit before guard/rejection behavior. |
-| `integrations.slack.max_events_per_minute` | none by default | `30` | Sliding window ingress rate cap per Slack channel/session key. |
+| `integrations.slack.max_message_chars` | none by default | `16000` | Per-message character limit before guard/rejection behavior. |
+| `integrations.slack.max_events_per_minute` | none by default | `240` | Sliding window ingress rate cap per Slack channel/session key. |
 
 ### Telegram
 
@@ -155,8 +158,8 @@ Common provider env vars used in default config:
 | `integrations.telegram.required_passphrase` | `TELEGRAM_REQUIRED_PASSPHRASE` | empty | Optional passphrase prefix required for accepted messages. |
 | `integrations.telegram.mode` | `TELEGRAM_MODE` | unset | Optional mode override for Telegram-originated sessions. |
 | `integrations.telegram.default_session_title` | none by default | `Telegram Session` | Title prefix/default for sessions created by Telegram webhook messages. |
-| `integrations.telegram.max_message_chars` | none by default | `2000` | Per-message character limit before guard/rejection behavior. |
-| `integrations.telegram.max_events_per_minute` | none by default | `30` | Sliding window ingress rate cap per Telegram chat/session key. |
+| `integrations.telegram.max_message_chars` | none by default | `16000` | Per-message character limit before guard/rejection behavior. |
+| `integrations.telegram.max_events_per_minute` | none by default | `240` | Sliding window ingress rate cap per Telegram chat/session key. |
 
 ## Tool Runtime Overrides
 
@@ -185,8 +188,8 @@ These are consumed directly by code paths and are not primary schema keys.
 
 | Env Var | Default | Where Used | Meaning |
 | --- | --- | --- | --- |
-| `COMPANION_AUDIT_MIRROR_ENABLED` | `false` | server bootstrap | Enables optional NDJSON audit file mirroring when set to `true`. |
-| `COMPANION_AUDIT_LOG_PATH` | `./data/audit-events.ndjson` | server bootstrap | NDJSON mirror path used only when `COMPANION_AUDIT_MIRROR_ENABLED=true`. |
+| `AUDIT_LOG_DEFAULT_LIMIT` | `250` | audit service | Default `GET /audit/events` limit when no `limit` query is passed. |
+| `AUDIT_LOG_MAX_LIMIT` | `10000` | audit service | Upper bound for `GET /audit/events?limit=<n>`. |
 | `NODE_ENV` | unset | startup checks | Enables production safety warnings when set to `production`. |
 | `COMPANION_URL` | unset | TUI client | Full API base URL override for TUI; if set, it wins over host/port derivation. |
 | `COMPANION_HOST` | unset | TUI client | Host override for TUI when `COMPANION_URL` is not set. |

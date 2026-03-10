@@ -101,8 +101,8 @@ const IntegrationsSchema = z.object({
       required_passphrase: z.string().optional(),
       mode: z.string().optional(),
       default_session_title: z.string().default("Slack Session"),
-      max_message_chars: z.number().int().positive().default(2000),
-      max_events_per_minute: z.number().int().positive().default(30),
+      max_message_chars: z.number().int().positive().default(16000),
+      max_events_per_minute: z.number().int().positive().default(240),
     })
     .default({}),
   telegram: z
@@ -115,8 +115,8 @@ const IntegrationsSchema = z.object({
       required_passphrase: z.string().optional(),
       mode: z.string().optional(),
       default_session_title: z.string().default("Telegram Session"),
-      max_message_chars: z.number().int().positive().default(2000),
-      max_events_per_minute: z.number().int().positive().default(30),
+      max_message_chars: z.number().int().positive().default(16000),
+      max_events_per_minute: z.number().int().positive().default(240),
     })
     .default({}),
 });
@@ -127,6 +127,13 @@ const ConfigSchema = z
       port: z.coerce.number().int().default(3000),
       host: z.string().default("0.0.0.0"),
       secret: z.string().default("dev-secret"),
+      idempotency: z
+        .object({
+          enabled: z.boolean().default(true),
+          ttl_seconds: z.number().int().positive().default(86_400),
+          max_entries: z.number().int().positive().default(10_000),
+        })
+        .default({}),
     }),
 
     db: z.object({

@@ -20,10 +20,11 @@ export class HttpClient {
     path: string,
     body?: unknown,
     signal?: AbortSignal,
+    extraHeaders?: Record<string, string>,
   ): Promise<TResponse> => {
     const response = await fetch(`${this.options.baseUrl}${path}`, {
       method,
-      headers: this.options.defaultHeaders,
+      headers: { ...this.options.defaultHeaders, ...(extraHeaders ?? {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
     });

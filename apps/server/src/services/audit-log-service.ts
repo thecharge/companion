@@ -12,8 +12,8 @@ import {
   AuditStatus,
   type AuditStatus as AuditStatusType,
 } from "@companion/db";
-const MAX_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_MAX_LIMIT", 1_000);
-const DEFAULT_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_DEFAULT_LIMIT", 100);
+const MAX_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_MAX_LIMIT", 10_000);
+const DEFAULT_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_DEFAULT_LIMIT", 250);
 
 function getLimitFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];

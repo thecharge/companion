@@ -5,6 +5,7 @@
 
 import type { AuditEvent, Caps, Msg, Session } from "../types";
 import type { HttpClient } from "./http-client";
+import { buildIdempotencyKey } from "./idempotency-key";
 
 export interface CreateSessionInput {
   title: string;
@@ -33,16 +34,28 @@ export class CompanionApiClient {
   };
 
   createSession = async (input: CreateSessionInput): Promise<Session> => {
-    const response = await this.httpClient.request<{ session: Session }>("POST", "/sessions", input);
+    const idempotencyKey = buildIdempotencyKey("session-create", {
+      title: input.title,
+      goal: input.goal,
+    });
+    const response = await this.httpClient.request<{ session: Session }>("POST", "/sessions", input, undefined, {
+      "x-idempotency-key": idempotencyKey,
+    });
     return response.session;
   };
 
   deleteSession = async (sessionId: string): Promise<void> => {
-    await this.httpClient.request<{ ok: boolean }>("DELETE", `/sessions/${sessionId}`);
+    const idempotencyKey = buildIdempotencyKey("session-delete", { sessionId });
+    await this.httpClient.request<{ ok: boolean }>("DELETE", `/sessions/${sessionId}`, undefined, undefined, {
+      "x-idempotency-key": idempotencyKey,
+    });
   };
 
   patchSessionMode = async (sessionId: string, mode: Session["mode"]): Promise<void> => {
-    await this.httpClient.request<{ ok: boolean }>("PATCH", `/sessions/${sessionId}`, { mode });
+    const idempotencyKey = buildIdempotencyKey("session-patch-mode", { sessionId, mode });
+    await this.httpClient.request<{ ok: boolean }>("PATCH", `/sessions/${sessionId}`, { mode }, undefined, {
+      "x-idempotency-key": idempotencyKey,
+    });
   };
 
   listMessages = async (sessionId: string): Promise<Msg[]> => {
@@ -51,9 +64,15 @@ export class CompanionApiClient {
   };
 
   streamMessage = async (sessionId: string, payload: SendMessageInput, signal: AbortSignal): Promise<Response> => {
+    const idempotencyKey = buildIdempotencyKey("session-message", {
+      sessionId,
+      content: payload.content,
+      working_dir: payload.working_dir,
+      stream: payload.stream,
+    });
     const response = await fetch(`${this.httpClient.getBaseUrl()}/sessions/${sessionId}/messages`, {
       method: "POST",
-      headers: this.httpClient.getDefaultHeaders(),
+      headers: { ...this.httpClient.getDefaultHeaders(), "x-idempotency-key": idempotencyKey },
       body: JSON.stringify(payload),
       signal,
     });

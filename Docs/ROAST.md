@@ -68,7 +68,7 @@
 
 9. Observability and audit baseline was added.
 - Server now writes structured audit events to the configured DB backend.
-- Optional NDJSON mirroring can be enabled with `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH`.
+- Runtime currently keeps audit persistence DB-only (no NDJSON mirror writes).
 - Authenticated endpoint `/audit/events` exposes recent audit records for operational review.
 - TUI now shows active agent/stage/tool in header state instead of only generic dots.
 

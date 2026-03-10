@@ -43,7 +43,7 @@ Current:
 - Security response headers are enabled in server responses
 - Startup checks now surface unsafe runtime posture (missing sandbox image, direct fallback)
 - Audit events are persisted in the configured DB backend and can be queried via authenticated `/audit/events`.
-- Optional NDJSON mirroring is available only when `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH` are set.
+- Audit runtime currently operates in DB-only mode (no NDJSON mirror writes).
 
 Needed:
 - Identity and RBAC (user/service principals)

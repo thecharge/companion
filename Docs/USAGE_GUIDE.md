@@ -68,11 +68,17 @@ Activity pane behavior:
 ## Audit Storage And Verification
 
 - Audit events are persisted in the configured DB backend (`sqlite` or `postgres`).
-- NDJSON mirror is disabled by default.
-- To enable file mirroring, set `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH`.
+- Audit mirroring to NDJSON is disabled in the current runtime profile (DB-only mode).
 - `GET /audit/events` now includes storage metadata:
   - `audit.backend`
   - `audit.ndjson_mirror_enabled`
+
+## Idempotent Mutations
+
+- Mutating session APIs support idempotency via request header `x-idempotency-key`.
+- Repeating the same key with the same payload returns the cached prior result instead of executing the mutation again.
+- Reusing the same key with a different payload returns a validation error.
+- For repeated operations by intent, include an explicit rerun instruction (`run again`, `rerun`, `retry`) so the agent is allowed to re-execute previously successful tool calls.
 
 Mode validation quick checks:
 - `local`: verify no cloud key is required and tasks complete.
