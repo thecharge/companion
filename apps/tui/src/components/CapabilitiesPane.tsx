@@ -4,7 +4,7 @@
  */
 
 import { Box, Text, useInput } from "ink";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BRAILLE_SHIFT_FRAMES } from "../constants";
 import type { AuditEvent, Caps } from "../types";
 
@@ -72,6 +72,25 @@ export function CapabilitiesPane({
   const [tab, setTab] = useState<Tab>("agents");
   const [offset, setOffset] = useState(0);
   const [auditScope, setAuditScope] = useState<"session" | "all">(activeSessionId ? "session" : "all");
+  const [freezeAudit, setFreezeAudit] = useState(false);
+  const [auditSnapshot, setAuditSnapshot] = useState<AuditEvent[]>(auditEvents);
+
+  useEffect(() => {
+    if (!freezeAudit) {
+      setAuditSnapshot(auditEvents);
+    }
+  }, [auditEvents, freezeAudit]);
+
+  const effectiveAuditEvents = freezeAudit ? auditSnapshot : auditEvents;
+  const scopedAuditEvents =
+    auditScope === "all"
+      ? effectiveAuditEvents
+      : effectiveAuditEvents.filter((event) => !event.session_id || event.session_id === activeSessionId);
+
+  const itemCount = (): number => {
+    if (!caps) return 0;
+    return tabItems(tab, caps, tab === "audit" ? scopedAuditEvents : effectiveAuditEvents).length;
+  };
 
   useInput((ch, key) => {
     if (!active) return;
@@ -98,6 +117,13 @@ export function CapabilitiesPane({
       setOffset(0);
     }
 
+    if (ch.toLowerCase() === "p" && tab === "audit") {
+      if (!freezeAudit) {
+        setAuditSnapshot(auditEvents);
+      }
+      setFreezeAudit((current) => !current);
+    }
+
     if (key.leftArrow || ch.toLowerCase() === "h") {
       setTab((current) => {
         if (current === "tools") return "agents";
@@ -122,8 +148,7 @@ export function CapabilitiesPane({
       setOffset((current) => Math.max(0, current - 1));
     }
     if (key.downArrow || ch.toLowerCase() === "j") {
-      const itemCount = caps ? tabItems(tab, caps, auditEvents).length : 0;
-      const maxOffset = Math.max(0, itemCount - PAGE_SIZE);
+      const maxOffset = Math.max(0, itemCount() - PAGE_SIZE);
       setOffset((current) => Math.min(maxOffset, current + 1));
     }
 
@@ -132,8 +157,7 @@ export function CapabilitiesPane({
     }
 
     if (key.pageDown) {
-      const itemCount = caps ? tabItems(tab, caps, auditEvents).length : 0;
-      const maxOffset = Math.max(0, itemCount - PAGE_SIZE);
+      const maxOffset = Math.max(0, itemCount() - PAGE_SIZE);
       setOffset((current) => Math.min(maxOffset, current + PAGE_SIZE));
     }
 
@@ -142,17 +166,11 @@ export function CapabilitiesPane({
     }
 
     if (ch === "G") {
-      const itemCount = caps ? tabItems(tab, caps, auditEvents).length : 0;
-      setOffset(Math.max(0, itemCount - PAGE_SIZE));
+      setOffset(Math.max(0, itemCount() - PAGE_SIZE));
     }
   });
 
-  const filteredAuditEvents =
-    auditScope === "all"
-      ? auditEvents
-      : auditEvents.filter((event) => !event.session_id || event.session_id === activeSessionId);
-
-  const items = caps ? tabItems(tab, caps, filteredAuditEvents) : [];
+  const items = caps ? tabItems(tab, caps, tab === "audit" ? scopedAuditEvents : effectiveAuditEvents) : [];
   const visible = items.slice(offset, offset + PAGE_SIZE);
   const frame = BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length] ?? BRAILLE_SHIFT_FRAMES[0];
 
@@ -168,11 +186,11 @@ export function CapabilitiesPane({
             <Text color={tab === "agents" ? "cyan" : "gray"}> Agents({caps.agents.length})</Text>
             <Text color={tab === "tools" ? "cyan" : "gray"}> Tools({caps.tools.length})</Text>
             <Text color={tab === "skills" ? "cyan" : "gray"}> Skills({caps.skills.length})</Text>
-            <Text color={tab === "audit" ? "cyan" : "gray"}> Audit({auditEvents.length})</Text>
+            <Text color={tab === "audit" ? "cyan" : "gray"}> Audit({scopedAuditEvents.length})</Text>
           </Box>
           {tab === "audit" && (
             <Text color="gray" dimColor>
-              scope={auditScope} (f toggle)
+              scope={auditScope} (f toggle) live={freezeAudit ? "paused" : "on"} (p toggle)
             </Text>
           )}
           {offset > 0 && (
@@ -183,7 +201,7 @@ export function CapabilitiesPane({
 
           {tab === "skills" && caps.skills.length === 0 ? (
             <Text color="gray"> No skills - add .skill.yaml to ./skills/</Text>
-          ) : tab === "audit" && auditEvents.length === 0 ? (
+          ) : tab === "audit" && scopedAuditEvents.length === 0 ? (
             <Text color="gray"> No audit events available yet</Text>
           ) : (
             visible.map((item) => (

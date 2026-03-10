@@ -1,3 +1,6 @@
+declare const Bun: { argv: string[] };
+declare const process: { exit(code?: number): void };
+
 /*
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2026 Companion contributors

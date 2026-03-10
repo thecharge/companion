@@ -36,6 +36,12 @@ export const handlePendingSkillProposal = async (params: {
 
   const pending = normalizeSkillSpec(pendingRaw as Partial<ProposedSkillSpec>);
 
+  if (isNegative(params.userMessage)) {
+    params.blackboard.setScratchpad(PENDING_SKILL_KEY, null);
+    params.blackboard.appendObservation(`Cancelled skill proposal ${pending.name}`);
+    return `Understood. I cancelled skill proposal "${pending.name}" and will continue using existing tools/workflows only.`;
+  }
+
   if (isAffirmative(params.userMessage)) {
     try {
       const created = await createSkillFromProposal(pending);
@@ -66,11 +72,6 @@ export const handlePendingSkillProposal = async (params: {
     }
   }
 
-  if (isNegative(params.userMessage)) {
-    params.blackboard.setScratchpad(PENDING_SKILL_KEY, null);
-    return "Understood. I cancelled that proposed skill acquisition.";
-  }
-
   return `Pending skill proposal: "${pending.name}" (${pending.description}). Reply with 'yes' to create it or 'no' to cancel.`;
 };
 
@@ -91,7 +92,11 @@ export const maybeProposeSkillAcquisition = async (params: {
 
   if (params.defaultProposal) {
     const explicitIntent = /\b(create|add|build|generate|acquire)\s+(a\s+)?skill\b/i.test(params.userMessage);
-    if (explicitIntent) {
+    const guideTeachIntent =
+      params.defaultProposal.implementation_type === "guide" &&
+      /\b(teach|how\s+to|workflow|guide|explain|playbook)\b/i.test(params.userMessage);
+
+    if (explicitIntent || guideTeachIntent) {
       params.blackboard.setScratchpad(PENDING_SKILL_KEY, params.defaultProposal);
       params.blackboard.appendDecision(0, "propose_skill", params.defaultProposal.name, params.defaultProposal.why);
       return proposalReply(params.defaultProposal);

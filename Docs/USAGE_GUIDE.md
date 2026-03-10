@@ -36,11 +36,13 @@ mode:
 - In Capabilities pane: `1/2/3/4` or `a/t/s/u` switch tabs (`agents/tools/skills/audit`).
 - In Capabilities pane: `j/k` or arrows scroll; `PgUp/PgDn` page; `g/G` jump top/bottom.
 - In Capabilities `Audit` tab: `f` toggles scope between active-session events and all events.
+- In Capabilities `Audit` tab: `p` pauses/resumes live updates while you inspect entries.
 - `Esc` cancels active task.
 
 Capabilities pane behavior:
 - Loading now uses braille-shift animation rather than static text.
 - `Audit` tab shows recent server audit events from `/audit/events`.
+- While Capabilities is focused, background polling is slower to reduce pane jitter.
 
 ## Skill Types
 
@@ -64,6 +66,14 @@ Capabilities pane behavior:
 - Log controls:
   - `COMPANION_LOG_LEVEL=debug|info|warn|error` (default: `info`)
   - `COMPANION_LOG_FORMAT=json` for structured JSON logs.
+
+## Audit Storage And Verification
+
+- Audit events are persisted in the configured DB backend (`sqlite` or `postgres`).
+- NDJSON mirror is disabled by default and only enabled when `COMPANION_AUDIT_LOG_PATH` is set.
+- `GET /audit/events` now includes storage metadata:
+  - `audit.backend`
+  - `audit.ndjson_mirror_enabled`
 
 Mode validation quick checks:
 - `local`: verify no cloud key is required and tasks complete.
@@ -205,6 +215,11 @@ When Companion detects a reusable missing capability:
 2. You respond `yes` or `no`.
 3. On `yes`, a new file is generated under `skills/<skill-name>/skill.yaml`.
 4. Skill is loaded and registered immediately in the same running session.
+5. On `no`, proposal state is cleared immediately and execution continues with existing tools only.
+
+Skill proposal outcomes:
+- `yes` / `ok` / `go ahead` / `proceed`: create and register the proposed skill.
+- `no` / `cancel` / `no thanks` / `don't create`: cancel proposal and continue without skill creation.
 
 ## Brownfield Usage Pattern
 

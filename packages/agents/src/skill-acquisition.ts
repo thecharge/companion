@@ -37,12 +37,12 @@ const RESERVED_TOOL_NAMES = new Set([
 
 export function isAffirmative(text: string): boolean {
   const t = text.trim().toLowerCase();
-  return /^(yes|y|confirm|approved|do it|create it|go ahead|ship it|ok|okay)\b/.test(t);
+  return /\b(yes|y|confirm|approved|do it|create it|go ahead|ship it|ok|okay|please create|proceed)\b/.test(t);
 }
 
 export function isNegative(text: string): boolean {
   const t = text.trim().toLowerCase();
-  return /^(no|n|cancel|decline|reject|not now|skip)\b/.test(t);
+  return /\b(no|n|cancel|decline|reject|not now|skip|don'?t create|do not create|no thanks|stop)\b/.test(t);
 }
 
 function toSlug(name: string): string {
@@ -92,6 +92,10 @@ export function defaultSkillProposalFromMessage(message: string): Partial<Propos
     /\b(sql|postgres|postgresql|sqlite|database|query|schema|join|index)\b/.test(normalized) &&
     /\b(teach|learn|how|workflow|guide|explain)\b/.test(normalized);
 
+  const genericTeachingIntent =
+    /\b(teach|learn|how|workflow|guide|explain|playbook|runbook)\b/.test(normalized) &&
+    /\b(tool|process|procedure|steps|method)\b/.test(normalized);
+
   if (sqlTeachingIntent) {
     return {
       name: "sql_workflow_guide_skill",
@@ -114,6 +118,31 @@ export function defaultSkillProposalFromMessage(message: string): Partial<Propos
         "3) Validate logic with LIMIT and representative filters before broad scans.",
         "4) Explain expected cardinality and performance risk points.",
         "5) If mutation is needed, wrap in transaction and provide rollback strategy.",
+      ].join("\\n"),
+    };
+  }
+
+  if (genericTeachingIntent) {
+    return {
+      name: "procedural_guide_skill",
+      description: "Reusable procedural guidance for recurring how-to requests.",
+      tool_name: "procedural_guide",
+      why: "User asked for reusable instructional workflow rather than direct script execution.",
+      implementation_type: "guide",
+      parameters: [
+        {
+          name: "topic",
+          type: "string",
+          description: "Topic to teach, explain, or provide a workflow for",
+          required: true,
+        },
+      ],
+      guide_text: [
+        "Procedure for: {{topic}}",
+        "1) Define prerequisites and constraints.",
+        "2) Provide step-by-step execution order.",
+        "3) Add validation checks and expected outputs.",
+        "4) Include common failure modes and recovery steps.",
       ].join("\\n"),
     };
   }

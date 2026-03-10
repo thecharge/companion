@@ -210,6 +210,64 @@ describe("agents exports", () => {
     }
   });
 
+  test("pending proposal cancels cleanly on no", async () => {
+    const cwdBefore = process.cwd();
+    const tmp = await mkdtemp(join(tmpdir(), "companion-agents-test-no-"));
+    process.chdir(tmp);
+
+    try {
+      const cfg = createTestConfig();
+      const registry = new ToolRegistry();
+      const processor = new SessionProcessor(cfg, registry, {} as never, {} as never);
+      const blackboard = new Blackboard({ goal: "Add capability" });
+
+      const propose = await processor.handleMessage({
+        session_id: asSession("s-no"),
+        blackboard,
+        user_message: "create a skill for git branch hygiene checks",
+        history: [],
+        working_dir: tmp,
+        mode: "local",
+      });
+
+      expect(propose.reply).toContain("propose a new skill");
+
+      const reject = await processor.handleMessage({
+        session_id: asSession("s-no"),
+        blackboard,
+        user_message: "no thanks, do not create it",
+        history: [],
+        working_dir: tmp,
+        mode: "local",
+      });
+
+      expect(reject.reply.toLowerCase()).toContain("cancelled skill proposal");
+      const scratch = blackboard.read("scratchpad") as Record<string, unknown>;
+      expect(scratch[PENDING_SKILL_KEY]).toBeNull();
+    } finally {
+      process.chdir(cwdBefore);
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("teaching SQL request proposes guide skill", async () => {
+    const cfg = createTestConfig();
+    const processor = new SessionProcessor(cfg, new ToolRegistry(), {} as never, {} as never);
+    const blackboard = new Blackboard({ goal: "Teach SQL workflow" });
+
+    const result = await processor.handleMessage({
+      session_id: asSession("s-guide"),
+      blackboard,
+      user_message: "teach the agent how to create SQL queries and workflow",
+      history: [],
+      working_dir: ".",
+      mode: "local",
+    });
+
+    expect(result.reply).toContain("propose a new skill");
+    expect(result.reply).toContain("(guide)");
+  });
+
   test("runtime mode remapping preserves extensibility", () => {
     const cfg = createMultiModelConfig();
     const balanced = buildRuntimeConfig(cfg, "balanced");

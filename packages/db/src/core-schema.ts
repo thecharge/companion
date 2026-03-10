@@ -64,7 +64,9 @@ BEGIN
 END;
 `;
 
-export async function applyPostgresCoreSchema(sql: any): Promise<void> {
+type PostgresSqlExecutor = (strings: TemplateStringsArray, ...values: unknown[]) => PromiseLike<unknown> | unknown;
+
+export async function applyPostgresCoreSchema(sql: PostgresSqlExecutor): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,

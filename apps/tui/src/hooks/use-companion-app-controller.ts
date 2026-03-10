@@ -19,6 +19,14 @@ import { type ActiveTask, type AuditEvent, type Caps, type LogEntry, type Msg, P
 import { streamSessionMessage } from "../utils/chat-stream";
 import { handleWebSocketEnvelope } from "../utils/ws-event-handler";
 
+const fastSignature = (value: unknown): string => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
 export interface CompanionAppController {
   pane: Pane;
   sessions: Session[];
@@ -74,6 +82,9 @@ export const useCompanionAppController = (): CompanionAppController => {
 
   const abortCtrlRef = useRef<AbortController | null>(null);
   const pendingAssistantMessageIdRef = useRef<string | null>(null);
+  const lastSessionsSigRef = useRef("");
+  const lastCapsSigRef = useRef("");
+  const lastAuditSigRef = useRef("");
 
   const addLogEntry = useCallback((text: string) => {
     const timestamp = new Date().toLocaleTimeString("en", { hour12: false });
@@ -112,9 +123,34 @@ export const useCompanionAppController = (): CompanionAppController => {
   const loadSessionsAndCapabilities = useCallback(async () => {
     try {
       const loaded = await sessionRepository.loadSessionsAndCapabilities();
-      setSessions(loaded.sessions);
-      setCaps(loaded.caps);
-      setAuditEvents(loaded.auditEvents);
+
+      const sessionsSig = fastSignature(loaded.sessions.map((s) => [s.id, s.title, s.mode, s.status, s.message_count]));
+      if (sessionsSig !== lastSessionsSigRef.current) {
+        lastSessionsSigRef.current = sessionsSig;
+        setSessions(loaded.sessions);
+      }
+
+      const capsSig = fastSignature(loaded.caps);
+      if (capsSig !== lastCapsSigRef.current) {
+        lastCapsSigRef.current = capsSig;
+        setCaps(loaded.caps);
+      }
+
+      const auditSig = fastSignature(
+        loaded.auditEvents.map((e) => [
+          e.event_id ?? "",
+          e.timestamp,
+          e.category,
+          e.action,
+          e.status,
+          e.session_id ?? "",
+        ]),
+      );
+      if (auditSig !== lastAuditSigRef.current) {
+        lastAuditSigRef.current = auditSig;
+        setAuditEvents(loaded.auditEvents);
+      }
+
       setStatusMsg("");
     } catch {
       setStatusMsg(`Cannot reach ${SERVER}`);
@@ -123,9 +159,12 @@ export const useCompanionAppController = (): CompanionAppController => {
 
   useEffect(() => {
     void loadSessionsAndCapabilities();
-    const pollTimer = setInterval(() => void loadSessionsAndCapabilities(), POLL_INTERVAL_MS);
+
+    // Lower polling pressure while user inspects capabilities to avoid visible jitter.
+    const intervalMs = pane === Pane.Capabilities ? POLL_INTERVAL_MS * 3 : POLL_INTERVAL_MS;
+    const pollTimer = setInterval(() => void loadSessionsAndCapabilities(), intervalMs);
     return () => clearInterval(pollTimer);
-  }, [loadSessionsAndCapabilities]);
+  }, [loadSessionsAndCapabilities, pane]);
 
   useEffect(() => {
     if (!streaming && !task) return;

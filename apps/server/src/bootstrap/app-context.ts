@@ -74,7 +74,6 @@ export interface AppContext {
   auditLogService: AuditLogService;
 }
 
-const DEFAULT_AUDIT_LOG_PATH = "./data/audit-events.ndjson";
 const log = new Logger("server.audit");
 
 const getEmbedBaseUrl = (cfg: Config): string => {
@@ -123,10 +122,14 @@ export const createAppContext = async (): Promise<AppContext> => {
   });
 
   const embedAvailable = await checkEmbedAvailability(embedBaseUrl, embedModelName);
-  const auditLogPath = process.env.COMPANION_AUDIT_LOG_PATH ?? DEFAULT_AUDIT_LOG_PATH;
+  const auditLogPath = process.env.COMPANION_AUDIT_LOG_PATH?.trim() || undefined;
   const auditLogRepository = new AuditLogRepository({ cfg, mirrorPath: auditLogPath });
   const auditLogService = new AuditLogService(auditLogRepository);
   await auditLogService.initialize();
+  log.info("audit repository initialized", {
+    storage: cfg.db.driver,
+    ndjson_mirror: auditLogPath ?? "disabled",
+  });
   bus.on("*", (event) => {
     void auditLogService.recordBusEvent(event).catch((error) => {
       log.warn("audit bus event write failed", error);
