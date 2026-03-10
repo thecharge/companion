@@ -174,7 +174,8 @@ packages/
 - Server runtime is now split by concern under `apps/server/src/{bootstrap,constants,middleware,routes,services,ws}`.
 - Server session processing now uses dedicated strategy/repository modules for summary model selection and session chat persistence.
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
-- Persistent audit events are written to `./data/audit-events.ndjson` (override: `COMPANION_AUDIT_LOG_PATH`) and exposed via `/audit/events`.
+- Persistent audit events are written through `@companion/db` and mirrored to `./data/audit-events.ndjson` by default (override: `COMPANION_AUDIT_LOG_PATH`) with size-based rotation.
+- Vector persistence is managed by `@companion/db` (`createVectorStore`) so memory storage uses the same driver boundary as sessions/messages.
 - Shared enum-like constants now exist in `packages/core` for key literals.
 - Agent orchestration roles, intent routes, and workflow tracks are externally defined in YAML (`companion.yaml` under `orchestrator.*`) and validated by `@companion/config`.
 - Multi-lane workflow orchestration is available for product-delivery and operations tracks.
@@ -243,10 +244,22 @@ Provider readiness report:
 bun run proof:providers
 ```
 
+Database portability and audit retention proof:
+
+```bash
+bun run proof:db
+```
+
 Strict provider gate (fails if any configured provider is missing keys or unreachable):
 
 ```bash
 bun run proof:providers -- --strict
+```
+
+Strict database proof gate:
+
+```bash
+bun run proof:db -- --strict
 ```
 
 Provider key matrix:

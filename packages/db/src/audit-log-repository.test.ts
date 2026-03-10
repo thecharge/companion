@@ -1,24 +1,16 @@
-/*
- * SPDX-License-Identifier: MIT
- * Copyright (c) 2026 Companion contributors
- */
-
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "@companion/config";
-import { AuditLogRepository } from "@companion/db";
-import { AuditLogService } from "./audit-log-service";
+import { AuditLogRepository } from "./audit-log-repository";
 
-function createConfig(dbPath: string): Config {
+function makeConfig(dbPath: string): Config {
   return {
     server: { port: 3000, host: "127.0.0.1", secret: "test" },
     db: { driver: "sqlite", sqlite: { path: dbPath }, postgres: { url: "" } },
     vector: { backend: "sqlite-vec", embedding: { model: "embed", dimensions: 3 } },
-    models: {
-      local: { provider: "ollama", model: "qwen3:1.7b", max_tokens: 100, temperature: 0 },
-    },
+    models: { local: { provider: "ollama", model: "qwen3:1.7b", max_tokens: 100, temperature: 0 } },
     orchestrator: {
       model: "local",
       max_rounds: 1,
@@ -66,25 +58,48 @@ function createConfig(dbPath: string): Config {
   };
 }
 
-describe("audit log service", () => {
-  test("writes and reads recent records", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "companion-audit-"));
-    const logPath = join(dir, "audit.ndjson");
-    const cfg = createConfig(join(dir, "data.db"));
-    const repository = new AuditLogRepository({ cfg, mirrorPath: logPath });
-    const service = new AuditLogService(repository);
+describe("audit log repository", () => {
+  test("stores records and reads recent events", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "companion-audit-repo-"));
+    const dbPath = join(dir, "audit.db");
+    const cfg = makeConfig(dbPath);
+    const repo = new AuditLogRepository({ cfg });
 
-    await service.initialize();
-    await service.record({
+    await repo.initialize();
+    await repo.record({
       timestamp: new Date().toISOString(),
       category: "http",
-      action: "sessions_list",
+      action: "session_create",
       status: "ok",
     });
 
-    const records = await service.listRecent(10);
-    expect(records.length).toBe(1);
-    expect(records[0]?.action).toBe("sessions_list");
+    const events = await repo.listRecent(5);
+    expect(events.length).toBe(1);
+    expect(events[0]?.action).toBe("session_create");
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("rotates mirror file when size threshold is exceeded", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "companion-audit-rotate-"));
+    const dbPath = join(dir, "audit.db");
+    const mirrorPath = join(dir, "audit.ndjson");
+    const cfg = makeConfig(dbPath);
+    const repo = new AuditLogRepository({ cfg, mirrorPath, rotateBytes: 120, rotateFiles: 2 });
+
+    await repo.initialize();
+
+    for (let i = 0; i < 10; i++) {
+      await repo.record({
+        timestamp: new Date().toISOString(),
+        category: "http",
+        action: `event_${i}`,
+        status: "ok",
+      });
+    }
+
+    const rotated = await readFile(`${mirrorPath}.1`, "utf8").catch(() => "");
+    expect(rotated.length > 0).toBe(true);
 
     await rm(dir, { recursive: true, force: true });
   });

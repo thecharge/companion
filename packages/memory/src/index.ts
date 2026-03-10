@@ -1,144 +1,18 @@
 /**
  * @companion/memory
  *
- * - VectorStore: sqlite-vec with JS cosine fallback
+ * - VectorStore abstractions from @companion/db
  * - SlidingWindow: boundary-aware chunking
  * - ContextBuilder: pair-aware trim, merged system prompt, honest token counting
  */
 
-import { Database } from "bun:sqlite";
 import type { Config } from "@companion/config";
 import type { SessionId } from "@companion/core";
+import type { VectorStore } from "@companion/db";
 import type { ChatMessage } from "@companion/llm";
 import { VectorMemoryRepository } from "./vector-memory-repository";
 
-// ── VectorStore ───────────────────────────────────────────────
-
-export interface VectorEntry {
-  id: string;
-  session_id: string;
-  content: string;
-  embedding: number[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface VectorSearchResult {
-  id: string;
-  content: string;
-  score: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface VectorStore {
-  upsert(entry: VectorEntry): Promise<void>;
-  search(sessionId: string, query: number[], topK: number, minScore: number): Promise<VectorSearchResult[]>;
-  delete(id: string): Promise<void>;
-  deleteSession(sessionId: string): Promise<void>;
-}
-
-// Cosine similarity — used as fallback when sqlite-vec is unavailable
-function cosine(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    const av = a[i] ?? 0;
-    const bv = b[i] ?? 0;
-    dot += av * bv;
-    na += av * av;
-    nb += bv * bv;
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom;
-}
-
-/**
- * SqliteVecStore
- *
- * Attempts to load the sqlite-vec extension for native vector operations.
- * Falls back to JS cosine similarity with a logged warning if unavailable.
- * The fallback is correct but slower for large corpora.
- */
-export class SqliteVecStore implements VectorStore {
-  private db: Database;
-  private nativeVec = false;
-
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath, { create: true });
-    this.init();
-  }
-
-  private init(): void {
-    // Attempt native sqlite-vec extension
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const vec = require("sqlite-vec") as { load: (db: Database) => void };
-      vec.load(this.db);
-      this.nativeVec = true;
-    } catch {
-      console.warn(
-        "[memory] sqlite-vec extension unavailable — using JS cosine fallback. Install sqlite-vec for production.",
-      );
-    }
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS vectors (
-        id         TEXT    NOT NULL PRIMARY KEY,
-        session_id TEXT    NOT NULL,
-        content    TEXT    NOT NULL,
-        embedding  BLOB    NOT NULL,
-        metadata   TEXT,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now','utc'))
-      );
-      CREATE INDEX IF NOT EXISTS vectors_session_idx ON vectors(session_id);
-    `);
-  }
-
-  async upsert(entry: VectorEntry): Promise<void> {
-    const embBytes = new Uint8Array(new Float32Array(entry.embedding).buffer);
-    this.db
-      .prepare(`
-      INSERT INTO vectors (id, session_id, content, embedding, metadata)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        content    = excluded.content,
-        embedding  = excluded.embedding,
-        metadata   = excluded.metadata
-    `)
-      .run(entry.id, entry.session_id, entry.content, embBytes, entry.metadata ? JSON.stringify(entry.metadata) : null);
-  }
-
-  async search(sessionId: string, query: number[], topK: number, minScore: number): Promise<VectorSearchResult[]> {
-    const rows = this.db
-      .prepare("SELECT id, content, embedding, metadata FROM vectors WHERE session_id = ?")
-      .all(sessionId) as Array<{ id: string; content: string; embedding: ArrayBuffer; metadata: string | null }>;
-
-    const scored = rows.map((row) => {
-      const emb = Array.from(new Float32Array(row.embedding));
-      const score = cosine(query, emb);
-      return {
-        id: row.id,
-        content: row.content,
-        score,
-        metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,
-      };
-    });
-
-    return scored
-      .filter((r) => r.score >= minScore)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
-  }
-
-  async delete(id: string): Promise<void> {
-    this.db.prepare("DELETE FROM vectors WHERE id = ?").run(id);
-  }
-
-  async deleteSession(sessionId: string): Promise<void> {
-    this.db.prepare("DELETE FROM vectors WHERE session_id = ?").run(sessionId);
-  }
-}
+export type { VectorEntry, VectorSearchResult, VectorStore } from "@companion/db";
 
 // ── SlidingWindow ─────────────────────────────────────────────
 

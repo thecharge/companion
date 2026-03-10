@@ -20,6 +20,20 @@ import {
   asSession,
   newId,
 } from "@companion/core";
+export {
+  AuditCategory,
+  type AuditEventRecord,
+  AuditLogRepository,
+  AuditStatus,
+} from "./audit-log-repository";
+export {
+  type VectorEntry,
+  type VectorSearchResult,
+  type VectorStore,
+  PostgresVectorStore,
+  SqliteVectorStore,
+  createVectorStore,
+} from "./vector-store";
 
 // ── Errors ────────────────────────────────────────────────────
 
@@ -104,13 +118,14 @@ END;
 // ── Row mappers ───────────────────────────────────────────────
 
 function rowToSession(r: Record<string, unknown>): Session {
+  const summaryValue = r["summary"];
   return {
     id: asSession(r["id"] as string),
     title: r["title"] as string,
     status: r["status"] as SessionStatus,
     mode: r["mode"] as SessionMode,
     blackboard: r["blackboard"] as string,
-    summary: r["summary"] as string | undefined,
+    summary: typeof summaryValue === "string" ? summaryValue : undefined,
     message_count: r["message_count"] as number,
     version: r["version"] as number,
     created_at: new Date(r["created_at"] as string),
@@ -119,12 +134,20 @@ function rowToSession(r: Record<string, unknown>): Session {
 }
 
 function rowToMessage(r: Record<string, unknown>): Message {
+  const toolCallsValue = r["tool_calls"];
+  const parsedToolCalls =
+    typeof toolCallsValue === "string"
+      ? JSON.parse(toolCallsValue)
+      : Array.isArray(toolCallsValue)
+        ? toolCallsValue
+        : undefined;
+
   return {
     id: asMessage(r["id"] as string),
     session_id: asSession(r["session_id"] as string),
     role: r["role"] as Message["role"],
     content: r["content"] as string,
-    tool_calls: r["tool_calls"] ? JSON.parse(r["tool_calls"] as string) : undefined,
+    tool_calls: parsedToolCalls,
     tool_call_id: r["tool_call_id"] as string | undefined,
     name: r["name"] as string | undefined,
     tokens: r["tokens"] as number | undefined,
@@ -330,6 +353,283 @@ export class SqliteDB implements DB {
   }
 }
 
+class PostgresSessionStore implements SessionStore {
+  constructor(private readonly cfg: Config) {}
+
+  private async sql() {
+    const url = this.cfg.db.postgres?.url;
+    if (!url) {
+      throw new Error("db.postgres.url is required when db.driver=postgres");
+    }
+    const module = await import("postgres");
+    return module.default(url, { max: 1, idle_timeout: 5 });
+  }
+
+  async create(id: SessionId, title: string, _goal: string, mode: SessionMode): Promise<Session> {
+    const sql = await this.sql();
+    try {
+      await sql`
+        INSERT INTO sessions (id, title, mode)
+        VALUES (${id}, ${title}, ${mode})
+      `;
+      const created = await this.get(id);
+      if (!created) throw new Error(`Failed to create session ${id}`);
+      return created;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async get(id: SessionId): Promise<Session | null> {
+    const sql = await this.sql();
+    try {
+      const rows = await sql<Record<string, unknown>[]>`
+        SELECT * FROM sessions WHERE id = ${id}
+      `;
+      const row = rows[0];
+      return row ? rowToSession(row) : null;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async list(opts: { status?: SessionStatus; limit?: number; offset?: number } = {}): Promise<Session[]> {
+    const sql = await this.sql();
+    const { status, limit = 50, offset = 0 } = opts;
+    try {
+      const rows = status
+        ? await sql<Record<string, unknown>[]>`
+            SELECT * FROM sessions
+            WHERE status = ${status}
+            ORDER BY updated_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `
+        : await sql<Record<string, unknown>[]>`
+            SELECT * FROM sessions
+            ORDER BY updated_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `;
+      return rows.map(rowToSession);
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async update(
+    id: SessionId,
+    patch: Partial<Pick<Session, "title" | "status" | "mode" | "blackboard" | "summary">> & {
+      expected_version?: number;
+    },
+  ): Promise<void> {
+    const sql = await this.sql();
+    try {
+      const sets: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [];
+
+      if (patch.title !== undefined) {
+        sets.push(`title = $${values.length + 1}`);
+        values.push(patch.title);
+      }
+      if (patch.status !== undefined) {
+        sets.push(`status = $${values.length + 1}`);
+        values.push(patch.status);
+      }
+      if (patch.mode !== undefined) {
+        sets.push(`mode = $${values.length + 1}`);
+        values.push(patch.mode);
+      }
+      if (patch.summary !== undefined) {
+        sets.push(`summary = $${values.length + 1}`);
+        values.push(patch.summary);
+      }
+      if (patch.blackboard !== undefined) {
+        sets.push(`blackboard = $${values.length + 1}`);
+        sets.push("version = version + 1");
+        values.push(patch.blackboard);
+      }
+
+      const idParam = values.length + 1;
+      let sqlText = `UPDATE sessions SET ${sets.join(", ")} WHERE id = $${idParam}`;
+      values.push(id);
+
+      if (patch.expected_version !== undefined) {
+        const versionParam = values.length + 1;
+        sqlText += ` AND version = $${versionParam}`;
+        values.push(patch.expected_version);
+      }
+
+      const result = await sql.unsafe(sqlText, values as never[]);
+      if (patch.expected_version !== undefined && result.count === 0) {
+        const exists = await sql<Record<string, unknown>[]>`SELECT 1 FROM sessions WHERE id = ${id}`;
+        if (exists.length > 0) throw new ConcurrencyError(id);
+      }
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async delete(id: SessionId): Promise<void> {
+    const sql = await this.sql();
+    try {
+      await sql`DELETE FROM sessions WHERE id = ${id}`;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async search(query: string, limit = 10): Promise<Session[]> {
+    const sql = await this.sql();
+    try {
+      const rows = await sql<Record<string, unknown>[]>`
+        SELECT *
+        FROM sessions
+        WHERE title ILIKE ${`%${query}%`} OR COALESCE(summary, '') ILIKE ${`%${query}%`}
+        ORDER BY updated_at DESC
+        LIMIT ${limit}
+      `;
+      return rows.map(rowToSession);
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async incrementMessageCount(id: SessionId): Promise<void> {
+    const sql = await this.sql();
+    try {
+      await sql`
+        UPDATE sessions
+        SET message_count = message_count + 1,
+            updated_at = NOW()
+        WHERE id = ${id}
+      `;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+}
+
+class PostgresMessageStore implements MessageStore {
+  constructor(private readonly cfg: Config) {}
+
+  private async sql() {
+    const url = this.cfg.db.postgres?.url;
+    if (!url) {
+      throw new Error("db.postgres.url is required when db.driver=postgres");
+    }
+    const module = await import("postgres");
+    return module.default(url, { max: 1, idle_timeout: 5 });
+  }
+
+  async add(msg: Omit<Message, "created_at">): Promise<Message> {
+    const sql = await this.sql();
+    try {
+      await sql`
+        INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id, name, tokens)
+        VALUES (
+          ${msg.id},
+          ${msg.session_id},
+          ${msg.role},
+          ${msg.content},
+          ${msg.tool_calls ? JSON.stringify(msg.tool_calls) : null}::jsonb,
+          ${msg.tool_call_id ?? null},
+          ${msg.name ?? null},
+          ${msg.tokens ?? null}
+        )
+      `;
+      const created = await this.get(msg.id);
+      if (!created) throw new Error(`Failed to create message ${msg.id}`);
+      return created;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async list(sessionId: SessionId, opts: { limit?: number; offset?: number } = {}): Promise<Message[]> {
+    const { limit = 100, offset = 0 } = opts;
+    const sql = await this.sql();
+    try {
+      const rows = await sql<Record<string, unknown>[]>`
+        SELECT * FROM messages
+        WHERE session_id = ${sessionId}
+        ORDER BY created_at ASC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `;
+      return rows.map(rowToMessage);
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  async get(id: MessageId): Promise<Message | null> {
+    const sql = await this.sql();
+    try {
+      const rows = await sql<Record<string, unknown>[]>`
+        SELECT * FROM messages WHERE id = ${id}
+      `;
+      const row = rows[0];
+      return row ? rowToMessage(row) : null;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+}
+
+export class PostgresDB implements DB {
+  sessions: SessionStore;
+  messages: MessageStore;
+
+  constructor(private readonly cfg: Config) {
+    this.sessions = new PostgresSessionStore(cfg);
+    this.messages = new PostgresMessageStore(cfg);
+  }
+
+  async initialize(): Promise<void> {
+    const url = this.cfg.db.postgres?.url;
+    if (!url) {
+      throw new Error("db.postgres.url is required when db.driver=postgres");
+    }
+    const module = await import("postgres");
+    const sql = module.default(url, { max: 1, idle_timeout: 5 });
+    try {
+      await sql`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL DEFAULT 'New Session',
+          status TEXT NOT NULL DEFAULT 'active',
+          mode TEXT NOT NULL DEFAULT 'local',
+          blackboard TEXT NOT NULL DEFAULT '{}',
+          summary TEXT,
+          message_count INTEGER NOT NULL DEFAULT 0,
+          version INTEGER NOT NULL DEFAULT 1,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL DEFAULT '',
+          tool_calls JSONB,
+          tool_call_id TEXT,
+          name TEXT,
+          tokens INTEGER,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+      await sql`CREATE INDEX IF NOT EXISTS messages_session_idx ON messages(session_id, created_at)`;
+    } finally {
+      await sql.end({ timeout: 2 });
+    }
+  }
+
+  close(): void {
+    // Driver uses short-lived connections per method call.
+  }
+}
+
 type DriverFactory = (cfg: Config) => Promise<DB>;
 
 const SQLITE_FACTORY: DriverFactory = async (cfg) => {
@@ -338,8 +638,15 @@ const SQLITE_FACTORY: DriverFactory = async (cfg) => {
   return new SqliteDB(cfg.db.sqlite.path);
 };
 
+const POSTGRES_FACTORY: DriverFactory = async (cfg) => {
+  const db = new PostgresDB(cfg);
+  await db.initialize();
+  return db;
+};
+
 const DRIVER_FACTORIES: Partial<Record<Config["db"]["driver"], DriverFactory>> = {
   sqlite: SQLITE_FACTORY,
+  postgres: POSTGRES_FACTORY,
 };
 
 // ── Factory ───────────────────────────────────────────────────
@@ -347,7 +654,7 @@ const DRIVER_FACTORIES: Partial<Record<Config["db"]["driver"], DriverFactory>> =
 export async function createDB(cfg: Config): Promise<DB> {
   const factory = DRIVER_FACTORIES[cfg.db.driver];
   if (!factory) {
-    throw new Error("postgres driver: use createPostgresDB() from @companion/db/postgres");
+    throw new Error(`Unsupported db driver: ${cfg.db.driver}`);
   }
   return factory(cfg);
 }

@@ -71,11 +71,17 @@
 - Authenticated endpoint `/audit/events` exposes recent audit records for operational review.
 - TUI now shows active agent/stage/tool in header state instead of only generic dots.
 
+10. Database boundary and retention posture were hardened.
+- Vector persistence moved behind `@companion/db` via a dedicated vector repository interface and factory (`createVectorStore`).
+- Audit persistence moved behind `@companion/db` via `AuditLogRepository`, with database-backed storage and mirror-file rotation support.
+- `createDB` now supports both sqlite and postgres session/message stores under one package boundary.
+- Added `bun run proof:db` to generate objective portability and retention evidence.
+
 ## Remaining Gaps Before Claiming Enterprise Grade
 
 1. Formal threat model and secure SDLC process.
 2. Secret management hardening (vault/KMS in non-local environments).
 3. Authn/authz model beyond static API secret.
 4. Audit logging and tamper-evident event retention.
- - Status: baseline implemented; immutable/tamper-evident retention still not implemented.
+ - Status: DB-backed audit persistence and rotation are now implemented; immutable/tamper-evident external retention is still not implemented.
 5. CI/CD with signed artifacts + SBOM + vulnerability scanning.

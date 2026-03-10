@@ -6,9 +6,9 @@
 import { SessionProcessor } from "@companion/agents";
 import { type Config, ConfigStore, loadConfig } from "@companion/config";
 import { Logger, type SessionId, bus } from "@companion/core";
-import { type DB, createDB } from "@companion/db";
+import { AuditLogRepository, type DB, createDB, createVectorStore } from "@companion/db";
 import { createLLMClient } from "@companion/llm";
-import { MemoryService, SqliteVecStore } from "@companion/memory";
+import { MemoryService } from "@companion/memory";
 import { type Skill, loadSkillsDir, registerSkills } from "@companion/skills";
 import { type SandboxExecutor, type ToolRegistry, createToolRegistry } from "@companion/tools";
 import { AuditLogService } from "../services/audit-log-service";
@@ -62,7 +62,7 @@ export const createAppContext = async (): Promise<AppContext> => {
   const configStore = new ConfigStore(cfg);
   const db = await createDB(cfg);
 
-  const vectorStore = new SqliteVecStore(cfg.db.sqlite.path.replace(".db", "-vec.db"));
+  const vectorStore = createVectorStore(cfg);
   const memoryService = new MemoryService(vectorStore, cfg);
 
   const { registry: toolRegistry, sandbox } = createToolRegistry(cfg, db);
@@ -81,7 +81,8 @@ export const createAppContext = async (): Promise<AppContext> => {
 
   const embedAvailable = await checkEmbedAvailability(embedBaseUrl, embedModelName);
   const auditLogPath = process.env.COMPANION_AUDIT_LOG_PATH ?? DEFAULT_AUDIT_LOG_PATH;
-  const auditLogService = new AuditLogService(auditLogPath);
+  const auditLogRepository = new AuditLogRepository({ cfg, mirrorPath: auditLogPath });
+  const auditLogService = new AuditLogService(auditLogRepository);
   await auditLogService.initialize();
   bus.on("*", (event) => {
     void auditLogService.recordBusEvent(event).catch((error) => {

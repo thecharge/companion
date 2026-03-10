@@ -50,4 +50,13 @@ pass "typecheck passed"
 bun run test
 pass "tests passed"
 
+bun run proof:runtime -- --strict
+pass "runtime proof passed"
+
+bun run proof:providers
+pass "provider proof generated"
+
+bun run proof:db -- --strict
+pass "database proof passed"
+
 printf '\nReadiness check completed.\n'

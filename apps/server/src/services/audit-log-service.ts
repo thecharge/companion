@@ -3,37 +3,15 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { type CompanionEvent, EventType, type SessionId } from "@companion/core";
-
-export const AuditCategory = {
-  Http: "http",
-  Agent: "agent",
-  Tool: "tool",
-  Session: "session",
-  Error: "error",
-} as const;
-
-export type AuditCategory = (typeof AuditCategory)[keyof typeof AuditCategory];
-
-export const AuditStatus = {
-  Ok: "ok",
-  Error: "error",
-} as const;
-
-export type AuditStatus = (typeof AuditStatus)[keyof typeof AuditStatus];
-
-export interface AuditEventRecord {
-  timestamp: string;
-  category: AuditCategory;
-  action: string;
-  status: AuditStatus;
-  session_id?: string;
-  metadata?: Record<string, unknown>;
-}
-
-const NEWLINE = "\n";
+import {
+  AuditCategory,
+  type AuditCategory as AuditCategoryType,
+  type AuditEventRecord,
+  type AuditLogRepository,
+  AuditStatus,
+  type AuditStatus as AuditStatusType,
+} from "@companion/db";
 const MAX_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_MAX_LIMIT", 1_000);
 const DEFAULT_AUDIT_LIMIT = getLimitFromEnv("AUDIT_LOG_DEFAULT_LIMIT", 100);
 
@@ -52,25 +30,19 @@ function normalizeAuditLimit(limit: number | undefined): number {
 }
 
 export class AuditLogService {
-  constructor(private readonly logFilePath: string) {}
+  constructor(private readonly repository: AuditLogRepository) {}
 
   initialize = async (): Promise<void> => {
-    await mkdir(dirname(this.logFilePath), { recursive: true });
-    const file = Bun.file(this.logFilePath);
-
-    if (!(await file.exists())) {
-      await Bun.write(this.logFilePath, "");
-    }
+    await this.repository.initialize();
   };
 
   record = async (event: AuditEventRecord): Promise<void> => {
-    const payload = JSON.stringify(event);
-    await appendFile(this.logFilePath, `${payload}${NEWLINE}`, "utf8");
+    await this.repository.record(event);
   };
 
   recordHttpEvent = async (params: {
     action: string;
-    status: AuditStatus;
+    status: AuditStatusType;
     sessionId?: SessionId;
     metadata?: Record<string, unknown>;
   }): Promise<void> => {
@@ -97,27 +69,11 @@ export class AuditLogService {
   };
 
   listRecent = async (limit?: number): Promise<AuditEventRecord[]> => {
-    const content = await readFile(this.logFilePath, "utf8").catch(() => "");
-    const lines = content
-      .split(NEWLINE)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const records = lines
-      .map((line) => {
-        try {
-          return JSON.parse(line) as AuditEventRecord;
-        } catch {
-          return null;
-        }
-      })
-      .filter((entry): entry is AuditEventRecord => entry !== null);
-
     const effectiveLimit = normalizeAuditLimit(limit);
-    return records.slice(Math.max(0, records.length - effectiveLimit));
+    return this.repository.listRecent(effectiveLimit);
   };
 
-  private mapBusEvent = (type: EventType): { category: AuditCategory; action: string; status: AuditStatus } => {
+  private mapBusEvent = (type: EventType): { category: AuditCategoryType; action: string; status: AuditStatusType } => {
     if (type === EventType.AgentStart) {
       return { category: AuditCategory.Agent, action: "agent_start", status: AuditStatus.Ok };
     }

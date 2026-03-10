@@ -62,6 +62,7 @@ Generate runtime and provider proof reports:
 ```bash
 bun run proof:runtime
 bun run proof:providers
+bun run proof:db
 ```
 
 Run strict proof gates (recommended for production branches):
@@ -69,6 +70,7 @@ Run strict proof gates (recommended for production branches):
 ```bash
 bun run proof:runtime -- --strict
 bun run proof:providers -- --strict
+bun run proof:db -- --strict
 ```
 
 Credential sourcing and provider-proof mapping:
@@ -252,6 +254,7 @@ bun run install:cli
 - Disable direct fallback in production.
 - Enable signed artifacts, SBOM, and vulnerability scanning.
 - Add centralized audit logging pipeline.
+- Keep all persistence implementations inside `packages/db` and validate portability with `bun run proof:db`.
 
 ## GitHub Governance Files
 

@@ -53,7 +53,28 @@ Run:
 bun run lint && bun run typecheck && bun run test && bun run readiness
 ```
 
-## 4) Workflow-Based Evidence
+## 4) Database Portability And Audit Retention Proof
+
+Run:
+
+```bash
+bun run proof:db
+```
+
+The report validates three controls against the active `companion.yaml` driver:
+- `db_crud`: session/message create-read-delete through `@companion/db`
+- `vector_store`: vector upsert and retrieval through `@companion/db`
+- `audit_store`: audit event persistence and retrieval through `@companion/db` audit repository
+
+Strict mode for release pipelines:
+
+```bash
+bun run proof:db -- --strict
+```
+
+Strict mode exits non-zero when any DB/vector/audit proof check fails.
+
+## 5) Workflow-Based Evidence
 
 - CI: `.github/workflows/ci.yml`
 - Dependency review: `.github/workflows/dependency-review.yml`
@@ -61,7 +82,7 @@ bun run lint && bun run typecheck && bun run test && bun run readiness
 
 Use workflow logs and artifacts as objective evidence during release reviews.
 
-## 5) Developer Guardrail Evidence
+## 6) Developer Guardrail Evidence
 
 - Pre-commit gate: `.githooks/pre-commit`
 - Hook setup script: `scripts/setup-hooks.sh`
@@ -74,7 +95,7 @@ bash scripts/setup-hooks.sh
 git config --get core.hooksPath
 ```
 
-## 6) Compliance Scope Boundary
+## 7) Compliance Scope Boundary
 
 Code-level proof can demonstrate:
 - static and runtime controls present in this repository,

@@ -19,6 +19,7 @@
     "webhook:smoke": "bash scripts/webhook-smoke.sh",
     "proof:runtime": "bun run scripts/runtime-proof.ts",
     "proof:providers": "bun run scripts/provider-proof.ts",
+    "proof:db": "bun run scripts/db-proof.ts",
     "build:tui:exe": "bash scripts/build-tui-executable.sh",
     "install:cli": "bash scripts/install-cli.sh",
     "uninstall:cli": "bash scripts/uninstall-cli.sh"

@@ -39,9 +39,16 @@ This document defines repository-wide standards for orchestration, configuration
 
 ## Audit Visibility
 
-- Server audit events are persisted to NDJSON (`data/audit-events.ndjson` by default).
+- Server audit events are persisted through `@companion/db` audit repository.
+- Default behavior writes to the active database driver and mirrors NDJSON with size-based rotation (`data/audit-events.ndjson` by default).
 - API endpoint: `GET /audit/events?limit=<n>`.
 - TUI surfaces recent audit events so users can inspect activity without leaving the terminal.
+
+## Persistence Boundary Rules
+
+- Database interactions must be implemented in `packages/db`.
+- App and feature packages must consume persistence via `@companion/db` repositories/factories, not direct `bun:sqlite` or ad-hoc driver calls.
+- For runtime portability, driver selection must remain config-driven (`db.driver`) and validated by `bun run proof:db`.
 
 ## Enforcement Checklist
 
