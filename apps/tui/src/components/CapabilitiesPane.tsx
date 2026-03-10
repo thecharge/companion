@@ -116,7 +116,7 @@ export function CapabilitiesPane({
       <Text bold color="cyan">
         Capabilities {active ? "[1/2/3/4 a/t/s/u h/l]" : ""}
       </Text>
-      {!caps && <Text color="gray"> {frame} Loading capabilities...</Text>}
+      {!caps && <Text color="gray"> {frame} Loading capabilities</Text>}
       {caps && (
         <>
           <Box>

@@ -36,7 +36,7 @@ function modeLabel(mode: Session["mode"]): string {
 function taskLabel(status: ActiveTask["status"]): string {
   if (status === TaskStatus.RunningTool) return "running tool";
   if (status === TaskStatus.Synthesizing) return "synthesizing";
-  return "thinking";
+  return "reasoning";
 }
 
 function ActiveTaskBox({ task }: { task: ActiveTask }) {
@@ -46,7 +46,7 @@ function ActiveTaskBox({ task }: { task: ActiveTask }) {
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginBottom={1}>
       <Box justifyContent="space-between">
         <Text bold color="yellow">
-          AGENT {task.agent} - {taskLabel(task.status)}...
+          AGENT {task.agent} - {taskLabel(task.status)}
         </Text>
         <Text color="gray">{elapsed}s</Text>
       </Box>
@@ -192,7 +192,7 @@ export function ChatPane({
                 {" "}
                 {modeLabel(mode)}
               </Text>
-              {streaming && <Text color="yellow"> ...</Text>}
+              {streaming && <Text color="yellow"> [stream]</Text>}
               {!wsConnected && <Text color="red"> WS!</Text>}
               <Text color="gray"> [1/2/3]</Text>
             </Box>
@@ -219,9 +219,9 @@ export function ChatPane({
               <Box key={msg.id} flexDirection="column" marginBottom={1}>
                 <Text bold color={msg.role === "user" ? "green" : "white"}>
                   {msg.role === "user" ? "You" : "Companion"}
-                  {msg.streaming ? " ..." : ""}
+                  {msg.streaming ? " [stream]" : ""}
                 </Text>
-                <Text wrap="wrap">{msg.content || (msg.streaming ? "..." : "")}</Text>
+                <Text wrap="wrap">{msg.content || (msg.streaming ? "[streaming]" : "")}</Text>
               </Box>
             ))}
           </Box>
@@ -233,7 +233,7 @@ export function ChatPane({
           <Box borderStyle="round" borderColor={focused ? "green" : streaming ? "yellow" : "gray"} marginTop={1}>
             {streaming ? (
               <Text color="yellow">
-                working {BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length]} (Esc abort)
+                processing {BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length]} (Esc abort)
               </Text>
             ) : focused ? (
               <TextInput

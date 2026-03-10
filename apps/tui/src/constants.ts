@@ -90,5 +90,5 @@ export const WS_MESSAGE_TYPE = {
   Cancel: "cancel",
 } as const;
 
-export const LOADER_FRAMES = [".", "..", "...", "...."] as const;
+export const LOADER_FRAMES = ["|", "/", "-", "\\"] as const;
 export const BRAILLE_SHIFT_FRAMES = ["\u2801", "\u2803", "\u2807", "\u280f", "\u281f", "\u283f", "\u287f"] as const;

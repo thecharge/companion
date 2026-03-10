@@ -128,6 +128,12 @@ Complex lane-oriented skills currently bundled:
 
 - Keep business logic in services/orchestration layers, not transport handlers.
 - Prefer small functions with explicit input/output contracts.
+- Use pattern-oriented modular design for new flows and major refactors:
+	- Strategy for runtime behavior selection.
+	- Adapter for provider/protocol translation.
+	- Repository for persistence/network boundaries.
+	- Facade for app-facing orchestration APIs.
+	- Factory for dependency wiring and construction.
 - Avoid hardcoded policy strings when shared constants or config is available.
 - Never hardcode base agent IDs in orchestration modules; configure role IDs via `orchestrator.roles` in `companion.yaml`.
 - Keep workflow signals and route policy in YAML (`orchestrator.workflow_tracks`, `orchestrator.intent_routes`), not inside function bodies.
@@ -135,7 +141,7 @@ Complex lane-oriented skills currently bundled:
 - Use block-style guard returns in orchestrator/control-flow paths for readability.
 - Prefer `export const ... = async (...) => { ... }` for module-level async helpers.
 - Add tests for any new workflow branch, tool registration, or config remap behavior.
-- Keep app-layer files under project limits and split by domain concern.
+- Keep app-layer files under project limits and split by domain concern; avoid god-object app controllers and service classes.
 
 Reference standards:
 - `Docs/ENGINEERING_STANDARDS.md`

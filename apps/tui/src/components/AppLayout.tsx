@@ -44,19 +44,19 @@ interface AppLayoutProps {
 
 const getTaskStageLabel = (task: ActiveTask): string => {
   if (task.status === "running_tool") {
-    return "tool";
+    return "tool-active";
   }
 
   if (task.status === "synthesizing") {
-    return "synth";
+    return "synthesizing";
   }
 
-  return "thinking";
+  return "reasoning";
 };
 
 const getThinkingLabel = (task: ActiveTask | null): string => {
   if (!task) {
-    return "thinking";
+    return "processing";
   }
 
   const stage = getTaskStageLabel(task);

@@ -5,12 +5,14 @@
 
 import { SessionProcessor } from "@companion/agents";
 import { type Config, type ConfigStore, resolveWorkingDirConfig } from "@companion/config";
-import { Blackboard, EventType, Logger, MessageRole, type SessionId, asMessage, bus, newId } from "@companion/core";
+import { Blackboard, EventType, Logger, type SessionId, bus } from "@companion/core";
 import { ConcurrencyError, type DB } from "@companion/db";
 import type { ChatMessage, OAIToolCall } from "@companion/llm";
 import { createLLMClient } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import type { ToolRegistry } from "@companion/tools";
+import { SessionChatRepository } from "./session-chat-repository";
+import { selectSummaryModel } from "./session-summary-model-strategy";
 
 const log = new Logger("server.session-service");
 
@@ -26,7 +28,11 @@ interface SessionMessageServiceParams {
 }
 
 export class SessionMessageService {
-  constructor(private readonly params: SessionMessageServiceParams) {}
+  private readonly chatRepository: SessionChatRepository;
+
+  constructor(private readonly params: SessionMessageServiceParams) {
+    this.chatRepository = new SessionChatRepository(params.db);
+  }
 
   processMessage = async (
     sessionId: SessionId,
@@ -41,9 +47,7 @@ export class SessionMessageService {
 
     const baseSessionConfig = this.params.configStore.get(sessionId);
     const sessionConfig = await resolveWorkingDirConfig(baseSessionConfig, workingDir, this.params.rootConfigPath);
-    const history = await this.params.db.messages.list(sessionId, {
-      limit: sessionConfig.memory.context_window.max_messages,
-    });
+    const history = await this.chatRepository.listMessages(sessionId, sessionConfig.memory.context_window.max_messages);
     const blackboard = Blackboard.fromJSON(session.blackboard);
 
     const chatHistory: ChatMessage[] = history.map((message) => ({
@@ -74,13 +78,8 @@ export class SessionMessageService {
         signal,
       });
 
-      const assistantMessage = await this.params.db.messages.add({
-        id: asMessage(newId()),
-        session_id: sessionId,
-        role: MessageRole.Assistant,
-        content: result.reply,
-      });
-      await this.params.db.sessions.incrementMessageCount(sessionId);
+      const assistantMessage = await this.chatRepository.addAssistantMessage(sessionId, result.reply);
+      await this.chatRepository.incrementMessageCount(sessionId);
 
       await this.storeMemoryChunked(sessionId, content, { role: "user" }).catch((error) =>
         log.warn("Store user memory failed", error),
@@ -164,10 +163,7 @@ export class SessionMessageService {
     blackboardJson: string,
   ): Promise<void> => {
     try {
-      await this.params.db.sessions.update(sessionId, {
-        blackboard: blackboardJson,
-        expected_version: expectedVersion,
-      });
+      await this.chatRepository.updateSessionBlackboard(sessionId, expectedVersion, blackboardJson);
     } catch (error) {
       if (!(error instanceof ConcurrencyError)) {
         throw error;
@@ -188,21 +184,7 @@ export class SessionMessageService {
       return;
     }
 
-    const alias = cfg.memory.summarisation.model;
-    let summaryModel = cfg.models[alias];
-    if (!summaryModel) {
-      return;
-    }
-
-    const requiresApiKey =
-      (summaryModel.provider === "anthropic" ||
-        summaryModel.provider === "openai" ||
-        summaryModel.provider === "gemini") &&
-      !summaryModel.api_key;
-    if (requiresApiKey) {
-      summaryModel = cfg.models.local;
-    }
-
+    const summaryModel = selectSummaryModel(cfg);
     if (!summaryModel) {
       return;
     }
@@ -221,6 +203,6 @@ export class SessionMessageService {
       return;
     }
 
-    await this.params.db.sessions.update(sessionId, { summary });
+    await this.chatRepository.updateSessionSummary(sessionId, summary);
   };
 }
