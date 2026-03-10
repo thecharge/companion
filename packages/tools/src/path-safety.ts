@@ -1,9 +1,10 @@
-import { join, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
 const SAFE_BASE = resolve(process.cwd());
 
 export function safePath(workingDir: string, relativePath: string): string {
-  const abs = resolve(join(workingDir, relativePath));
+  const candidate = relativePath.trim();
+  const abs = isAbsolute(candidate) ? resolve(candidate) : resolve(workingDir, candidate);
   if (!abs.startsWith(SAFE_BASE) && !abs.startsWith(resolve(workingDir))) {
     throw new Error(`SECURITY: path "${relativePath}" resolves outside safe base`);
   }

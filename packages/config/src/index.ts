@@ -121,6 +121,23 @@ const IntegrationsSchema = z.object({
     .default({}),
 });
 
+const McpTransportSchema = z.enum(["stdio", "http"]);
+
+const McpServerSchema = z.object({
+  enabled: z.coerce.boolean().default(true),
+  transport: McpTransportSchema.default("stdio"),
+  command: z.string().optional(),
+  args: z.array(z.string()).default([]),
+  url: z.string().optional(),
+  env: z.record(z.string(), z.string()).default({}),
+  timeout_seconds: z.number().int().positive().default(30),
+});
+
+const McpSchema = z.object({
+  enabled: z.coerce.boolean().default(false),
+  servers: z.record(z.string(), McpServerSchema).default({}),
+});
+
 const ConfigSchema = z
   .object({
     server: z.object({
@@ -192,6 +209,8 @@ const ConfigSchema = z
     }),
 
     integrations: IntegrationsSchema.default({}),
+
+    mcp: McpSchema.default({}),
 
     tools: z
       .record(

@@ -90,7 +90,7 @@ agents:
   analyst:
     model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Reads and analyses documents, code, and data. Produces structured observations."
-    tools:       [read_file, list_dir, repo_map, search_code, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills, runtime_posture, provider_matrix, incident_triage, release_readiness]
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, search_memory, web_fetch, weather_lookup, skill_of_skills, runtime_posture, provider_matrix, mcp_servers, incident_triage, release_readiness, research_web_resource, research_file_source]
     reads_from:  [goal, observations]
     writes_to:   [observations]
     max_turns:   6
@@ -98,7 +98,7 @@ agents:
   planner:
     model:       local
     description: "Read-only planning agent for architecture, risk, and staged execution design."
-    tools:       [read_file, list_dir, repo_map, search_code, search_history, web_fetch, decomposition_plan, runtime_posture]
+    tools:       [read_file, list_dir, repo_map, search_code, search_history, web_fetch, decomposition_plan, runtime_posture, mcp_servers, research_web_resource]
     reads_from:  [goal, observations, decisions]
     writes_to:   [decisions, observations]
     max_turns:   6
@@ -130,7 +130,7 @@ agents:
   engineer:
     model:       local             # mode overrides this at runtime in balanced/cloud
     description: "Writes, edits, and tests code. Uses file and shell tools to implement features."
-    tools:       [read_file, write_file, list_dir, repo_map, search_code, run_shell, run_tests, search_history, create_skill_template, decomposition_plan]
+    tools:       [read_file, write_file, list_dir, repo_map, search_code, run_shell, run_tests, search_history, create_skill_template, decomposition_plan, mcp_servers, research_file_source]
     reads_from:  [goal, observations, artifacts]
     writes_to:   [artifacts, observations]
     max_turns:   12
@@ -193,6 +193,24 @@ integrations:
     default_session_title: "Telegram Session"
     max_message_chars: 16000
     max_events_per_minute: 240
+
+mcp:
+  enabled: ${MCP_ENABLED:-false}
+  servers:
+    filesystem:
+      enabled: ${MCP_SERVER_FILESYSTEM_ENABLED:-false}
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      env: {}
+      timeout_seconds: 30
+    fetch:
+      enabled: ${MCP_SERVER_FETCH_ENABLED:-false}
+      transport: stdio
+      command: uvx
+      args: ["mcp-server-fetch"]
+      env: {}
+      timeout_seconds: 30
 
 # ── Sandbox ───────────────────────────────────────────────────
 # Controls how run_shell and run_tests execute commands.

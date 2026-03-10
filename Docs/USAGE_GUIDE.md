@@ -121,8 +121,37 @@ curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
 ```
 
 Notes:
-- Paths remain sandbox/path-safety constrained to `working_dir`.
+- Relative paths are resolved against `working_dir`.
+- Absolute paths are supported (for example `/tmp/test.log`) and remain constrained by path-safety checks.
 - Tool names and args must match registered tool schemas.
+
+## MCP Catalog Usage
+
+Companion includes MCP server catalog support in config plus a runtime inspection tool.
+
+1. Enable MCP in config:
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    filesystem:
+      enabled: true
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      env: {}
+      timeout_seconds: 30
+```
+
+2. Inspect loaded MCP catalog at runtime:
+
+```bash
+curl -s -X POST http://localhost:3000/sessions/<SESSION_ID>/messages \
+  -H "Authorization: Bearer dev-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"{\"tool\":\"mcp_servers\",\"args\":{}}","stream":false}'
+```
 
 ## End-to-End Proof Script
 

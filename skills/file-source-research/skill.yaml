@@ -1,0 +1,138 @@
+name: file-source-research
+version: "1.0.0"
+description: "Research content from local paths, uploaded files, or web links with a unified workflow."
+tags: [research, files, uploaded, links]
+
+tools:
+  - name: research_file_source
+    description: "Read and summarize a source from local path, uploaded file path, or HTTP(S) link."
+    parameters:
+      source:
+        type: string
+        description: "Path or URL to inspect"
+        required: true
+      source_type:
+        type: string
+        description: "Optional explicit type: auto | local | url"
+        required: false
+      question:
+        type: string
+        description: "Optional question/focus for extraction"
+        required: false
+      max_chars:
+        type: number
+        description: "Maximum characters to inspect (default 12000, max 50000)"
+        required: false
+    timeout: 60
+    script: |
+      python3 - << 'PYEOF'
+      import os
+      import re
+      import sys
+      import urllib.request
+      from pathlib import Path
+
+      source = (os.environ.get("COMPANION_ARG_SOURCE") or "").strip()
+      source_type = (os.environ.get("COMPANION_ARG_SOURCE_TYPE") or "auto").strip().lower()
+      question = (os.environ.get("COMPANION_ARG_QUESTION") or "").strip()
+      max_chars_raw = (os.environ.get("COMPANION_ARG_MAX_CHARS") or "12000").strip()
+      working_dir = Path(os.environ.get("WORKING_DIR") or ".").resolve()
+
+      if not source:
+        print("Error: source is required")
+        sys.exit(1)
+      if source_type not in {"auto", "local", "url"}:
+        print("Error: source_type must be one of: auto, local, url")
+        sys.exit(1)
+
+      try:
+        max_chars = int(max_chars_raw)
+      except ValueError:
+        max_chars = 12000
+      max_chars = max(1000, min(max_chars, 50000))
+
+      is_url = source.startswith("http://") or source.startswith("https://")
+      mode = source_type
+      if mode == "auto":
+        mode = "url" if is_url else "local"
+
+      raw_text = ""
+      location = source
+      content_type = "text/plain"
+
+      if mode == "url":
+        if not is_url:
+          print("Error: url mode requires source to start with http:// or https://")
+          sys.exit(1)
+        req = urllib.request.Request(
+          source,
+          headers={
+            "User-Agent": "Companion/1.0",
+            "Accept": "text/html,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+          },
+        )
+        try:
+          with urllib.request.urlopen(req, timeout=20) as response:
+            content_type = response.headers.get("Content-Type", "") or "unknown"
+            raw_text = response.read(max_chars).decode("utf-8", errors="replace")
+        except Exception as exc:
+          print(f"Error: failed to fetch URL {source}: {exc}")
+          sys.exit(1)
+      else:
+        path = Path(source)
+        if not path.is_absolute():
+          path = working_dir / path
+        path = path.resolve()
+        location = str(path)
+
+        if not path.exists() or not path.is_file():
+          print(f"Error: file not found: {location}")
+          sys.exit(1)
+
+        try:
+          raw = path.read_bytes()[:max_chars]
+        except Exception as exc:
+          print(f"Error: failed to read file {location}: {exc}")
+          sys.exit(1)
+
+        raw_text = raw.decode("utf-8", errors="replace")
+        content_type = "local-file"
+
+      text = raw_text
+      if "html" in content_type.lower() or "<html" in text.lower():
+        text = re.sub(r"<script[\\s\\S]*?</script>", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"<style[\\s\\S]*?</style>", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+      text = re.sub(r"\\s+", " ", text).strip()
+
+      if not text:
+        print(f"Source: {location}")
+        print("No readable text extracted.")
+        sys.exit(0)
+
+      snippets = []
+      if question:
+        terms = [t for t in re.split(r"[^a-zA-Z0-9]+", question.lower()) if t]
+        sentences = re.split(r"(?<=[.!?])\\s+", text)
+        for sentence in sentences:
+          s = sentence.strip()
+          if not s:
+            continue
+          low = s.lower()
+          if any(term in low for term in terms):
+            snippets.append(s)
+          if len(snippets) >= 10:
+            break
+
+      if not snippets:
+        snippets = [s.strip() for s in re.split(r"(?<=[.!?])\\s+", text) if s.strip()][:10]
+
+      print(f"Source: {location}")
+      print(f"Mode: {mode}")
+      print(f"Content-Type: {content_type}")
+      if question:
+        print(f"Question: {question}")
+      print("Findings:")
+      for idx, line in enumerate(snippets, start=1):
+        print(f"{idx}. {line}")
+      PYEOF

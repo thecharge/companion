@@ -161,6 +161,34 @@ Common provider env vars used in default config:
 | `integrations.telegram.max_message_chars` | none by default | `16000` | Per-message character limit before guard/rejection behavior. |
 | `integrations.telegram.max_events_per_minute` | none by default | `240` | Sliding window ingress rate cap per Telegram chat/session key. |
 
+## MCP (Model Context Protocol)
+
+| Config Path | Env Var (if used) | Default | Meaning |
+| --- | --- | --- | --- |
+| `mcp.enabled` | `MCP_ENABLED` | `false` | Enables MCP server catalog usage in runtime posture and tools. |
+| `mcp.servers.<name>.enabled` | optional env interpolation | `true` | Per-server switch to include/exclude a configured server. |
+| `mcp.servers.<name>.transport` | none by default | `stdio` | Transport type. Allowed values: `stdio`, `http`. |
+| `mcp.servers.<name>.command` | none by default | unset | Executable for `stdio` servers (for example `npx`, `uvx`). |
+| `mcp.servers.<name>.args[]` | none by default | `[]` | CLI args for `stdio` server startup. |
+| `mcp.servers.<name>.url` | none by default | unset | Endpoint URL for `http` MCP servers. |
+| `mcp.servers.<name>.env` | none by default | `{}` | Key/value environment map for MCP server process bootstrapping. |
+| `mcp.servers.<name>.timeout_seconds` | none by default | `30` | Timeout budget for server interactions/health checks. |
+
+Example MCP block:
+
+```yaml
+mcp:
+  enabled: ${MCP_ENABLED:-false}
+  servers:
+    filesystem:
+      enabled: ${MCP_SERVER_FILESYSTEM_ENABLED:-false}
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+      env: {}
+      timeout_seconds: 30
+```
+
 ## Tool Runtime Overrides
 
 `tools` is a map keyed by tool name.
@@ -196,6 +224,9 @@ These are consumed directly by code paths and are not primary schema keys.
 | `COMPANION_PORT` | `3000` | server + TUI | Port override used by server bind and TUI URL derivation when explicit URL is absent. |
 | `COMPANION_SECRET` | empty in TUI if missing | server + TUI | API bearer secret. TUI injects it into `Authorization` header. |
 | `COMPANION_ARG_*` | per invocation | skills runtime | Argument-passing channel for skill tool executions (for example `COMPANION_ARG_QUERY`). |
+| `MCP_ENABLED` | `false` | YAML interpolation (`mcp.enabled`) | Global MCP catalog enable switch in default config. |
+| `MCP_SERVER_FILESYSTEM_ENABLED` | `false` | YAML interpolation (`mcp.servers.filesystem.enabled`) | Enables bundled filesystem MCP server example entry. |
+| `MCP_SERVER_FETCH_ENABLED` | `false` | YAML interpolation (`mcp.servers.fetch.enabled`) | Enables bundled fetch MCP server example entry. |
 
 ## Recommended Minimum Production Posture
 

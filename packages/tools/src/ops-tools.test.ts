@@ -4,13 +4,26 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { createProviderMatrixTool, createRuntimePostureTool } from "./ops-tools";
+import { createMcpServersTool, createProviderMatrixTool, createRuntimePostureTool } from "./ops-tools";
 
 const mockContext = {
   cfg: {
     server: { secret: "dev-secret" },
     mode: { default: "balanced" },
     sandbox: { runtime: "auto", allow_direct_fallback: true },
+    mcp: {
+      enabled: true,
+      servers: {
+        github: {
+          enabled: true,
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+          env: {},
+          timeout_seconds: 30,
+        },
+      },
+    },
     models: {
       local: { provider: "ollama", model: "qwen3:1.7b", base_url: "http://localhost:11434" },
       smart: { provider: "anthropic", model: "claude", api_key: "test-key" },
@@ -32,5 +45,12 @@ describe("ops tools", () => {
     expect(result).toContain("local");
     expect(result).toContain("smart");
     expect(result).toContain("api_key_present");
+  });
+
+  test("mcp servers tool reports configured MCP servers", async () => {
+    const tool = createMcpServersTool();
+    const result = await tool.handler({}, mockContext);
+    expect(result).toContain("mcp_enabled");
+    expect(result).toContain("github");
   });
 });

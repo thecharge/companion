@@ -39,18 +39,19 @@ function createConfig(): Config {
         trusted_channel_ids: [],
         trusted_team_ids: [],
         default_session_title: "Slack Session",
-        max_message_chars: 2000,
-        max_events_per_minute: 30,
+        max_message_chars: 16000,
+        max_events_per_minute: 240,
       },
       telegram: {
         enabled: false,
         trusted_user_ids: [],
         trusted_chat_ids: [],
         default_session_title: "Telegram Session",
-        max_message_chars: 2000,
-        max_events_per_minute: 30,
+        max_message_chars: 16000,
+        max_events_per_minute: 240,
       },
     },
+    mcp: { enabled: false, servers: {} },
     tools: {},
     sandbox: {
       runtime: "direct",
@@ -75,5 +76,6 @@ describe("default tools factory", () => {
     expect(names).toContain("repo_map");
     expect(names).toContain("runtime_posture");
     expect(names).toContain("provider_matrix");
+    expect(names).toContain("mcp_servers");
   });
 });

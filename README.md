@@ -28,6 +28,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Architecture patterns and diagrams: `Docs/ARCHITECTURE_PATTERNS.md`
 - Real usage examples: `Docs/EXAMPLES.md`
 - Usage guide: `Docs/USAGE_GUIDE.md`
+- Skills guide: `Docs/SKILLS_GUIDE.md`
 - Development guide: `Docs/DEVELOPMENT_GUIDE.md`
 - Engineering standards: `Docs/ENGINEERING_STANDARDS.md`
 - Database architecture and migrations: `Docs/DATABASE_ARCHITECTURE.md`
@@ -145,6 +146,8 @@ Flow:
 Skill tooling included:
 - `skill_of_skills`: recommends matching skills for a task.
 - `create_skill_template`: scaffolds a new skill from parameters.
+- `research_web_resource`: researches a website resource with focused extraction.
+- `research_file_source`: researches local/uploaded/link-based file sources.
 
 ## Repository Layout
 
@@ -177,6 +180,7 @@ packages/
 - Health and telemetry endpoints are available at `/health` and `/metrics`.
 - Persistent audit events are written through `@companion/db` (DB-only runtime mode).
 - Mutating session APIs are idempotent when clients provide `x-idempotency-key`.
+- MCP server catalog is supported via `mcp` config and inspectable using `mcp_servers` tool.
 - Vector persistence is managed by `@companion/db` (`createVectorStore`) so memory storage uses the same driver boundary as sessions/messages.
 - Shared enum-like constants now exist in `packages/core` for key literals.
 - Agent orchestration roles, intent routes, and workflow tracks are externally defined in YAML (`companion.yaml` under `orchestrator.*`) and validated by `@companion/config`.
