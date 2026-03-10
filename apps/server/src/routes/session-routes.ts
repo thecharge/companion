@@ -140,7 +140,7 @@ export const handleSessionRoutes = async (
 
   if (pathName === RoutePath.Sessions && method === HttpMethod.Get) {
     const sessions = await ctx.db.sessions.list();
-    await auditLogService.recordHttpEvent({ action: "sessions_list", status: "ok" });
+    await auditLogService.recordHttpEvent({ action: "sessions_list", status: "ok", request: req });
     return Response.json({ sessions });
   }
 
@@ -153,7 +153,7 @@ export const handleSessionRoutes = async (
     const goal = body.goal ?? title;
     const mode = (body.mode ?? ctx.cfg.mode.default) as SessionMode;
     const session = await ctx.db.sessions.create(sessionId, title, goal, mode);
-    await auditLogService.recordHttpEvent({ action: "session_create", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_create", status: "ok", request: req, sessionId });
     return Response.json({ session }, { status: HttpStatus.Created });
   }
 
@@ -165,7 +165,7 @@ export const handleSessionRoutes = async (
   if (!session && subPath !== "") return notFoundResponse();
 
   if (subPath === "" && method === HttpMethod.Get) {
-    await auditLogService.recordHttpEvent({ action: "session_get", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_get", status: "ok", request: req, sessionId });
     return Response.json({ session });
   }
 
@@ -179,20 +179,20 @@ export const handleSessionRoutes = async (
       mode: body.mode as SessionMode | undefined,
       status: body.status as SessionStatus | undefined,
     });
-    await auditLogService.recordHttpEvent({ action: "session_patch", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_patch", status: "ok", request: req, sessionId });
     return Response.json({ ok: true });
   }
 
   if (subPath === "" && method === HttpMethod.Delete) {
     await ctx.db.sessions.delete(sessionId);
-    await auditLogService.recordHttpEvent({ action: "session_delete", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_delete", status: "ok", request: req, sessionId });
     return Response.json({ ok: true });
   }
 
   if (subPath === RoutePath.SessionMessagesSuffix && method === HttpMethod.Get) {
     const limit = Number(url.searchParams.get(QueryParam.Limit) ?? "100");
     const messages = await ctx.db.messages.list(sessionId, { limit });
-    await auditLogService.recordHttpEvent({ action: "session_messages_list", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_messages_list", status: "ok", request: req, sessionId });
     return Response.json({ messages });
   }
 
@@ -213,7 +213,7 @@ export const handleSessionRoutes = async (
       content,
     });
     await ctx.db.sessions.incrementMessageCount(sessionId);
-    await auditLogService.recordHttpEvent({ action: "session_message_create", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_message_create", status: "ok", request: req, sessionId });
 
     if (body.stream) return createSseResponse(sessionId, sessionMessageService, ctx, session, content, workingDir);
 
@@ -228,7 +228,7 @@ export const handleSessionRoutes = async (
 
   if (subPath === RoutePath.SessionBlackboardSuffix && method === HttpMethod.Get) {
     if (!session) return notFoundResponse();
-    await auditLogService.recordHttpEvent({ action: "session_blackboard_get", status: "ok", sessionId });
+    await auditLogService.recordHttpEvent({ action: "session_blackboard_get", status: "ok", request: req, sessionId });
     return Response.json({ blackboard: JSON.parse(session.blackboard) });
   }
 

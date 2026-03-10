@@ -100,16 +100,28 @@ async function runAuditCheck(checks: CheckResult[]): Promise<void> {
       category: "http",
       action: "db_proof",
       status: "ok",
+      actor_id: "proof-runner",
+      actor_type: "service",
+      source_ip: "127.0.0.1",
+      request_id: "proof-request",
+      http_method: "POST",
+      http_path: "/proof/db",
       metadata: { source: "proof" },
     });
 
     const events = await repository.listRecent(5);
-    const ok = events.some((event) => event.action === "db_proof");
+    const ok = events.some(
+      (event) =>
+        event.action === "db_proof" &&
+        event.actor_id === "proof-runner" &&
+        event.http_path === "/proof/db" &&
+        event.request_id === "proof-request",
+    );
 
     checks.push({
       name: "audit_store",
       status: ok ? "pass" : "fail",
-      detail: ok ? "audit repository write/read passed" : "audit repository verification failed",
+      detail: ok ? "audit repository write/read with who/where fields passed" : "audit repository verification failed",
     });
   } catch (error) {
     checks.push({ name: "audit_store", status: "fail", detail: String(error) });

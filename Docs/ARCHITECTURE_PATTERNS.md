@@ -31,14 +31,14 @@ Every major feature should map to these boundaries:
 flowchart LR
   User --> TUI[apps/tui]
   TUI --> Server[apps/server]
-  Server --> Agents[@companion/agents]
-  Agents --> LLM[@companion/llm]
-  Agents --> Tools[@companion/tools]
-  Agents --> Memory[@companion/memory]
-  Server --> DB[@companion/db]
+  Server --> Agents[companion/agents]
+  Agents --> LLM[companion/llm]
+  Agents --> Tools[companion/tools]
+  Agents --> Memory[companion/memory]
+  Server --> DB[companion/db]
   Agents --> DB
   Memory --> DB
-  Agents --> Core[@companion/core]
+  Agents --> Core[companion/core]
 ```
 
 ## LLM Pattern Diagram

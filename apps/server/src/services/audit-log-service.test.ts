@@ -88,4 +88,33 @@ describe("audit log service", () => {
 
     await rm(dir, { recursive: true, force: true });
   });
+
+  test("captures who and where fields for HTTP audit events", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "companion-audit-http-"));
+    const logPath = join(dir, "audit.ndjson");
+    const cfg = createConfig(join(dir, "data.db"));
+    const repository = new AuditLogRepository({ cfg, mirrorPath: logPath });
+    const service = new AuditLogService(repository);
+
+    const request = new Request("http://localhost:3000/sessions?limit=10", {
+      method: "GET",
+      headers: {
+        "x-user-id": "u-123",
+        "x-forwarded-for": "203.0.113.10",
+        "x-request-id": "req-1",
+        "user-agent": "companion-test",
+      },
+    });
+
+    await service.initialize();
+    await service.recordHttpEvent({ action: "sessions_list", status: "ok", request });
+    const records = await service.listRecent(10);
+
+    expect(records[0]?.actor_id).toBe("u-123");
+    expect(records[0]?.http_path).toBe("/sessions");
+    expect(records[0]?.source_ip).toBe("203.0.113.10");
+    expect(records[0]?.request_id).toBe("req-1");
+
+    await rm(dir, { recursive: true, force: true });
+  });
 });

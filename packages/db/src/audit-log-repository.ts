@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite";
+import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Config } from "@companion/config";
+import { runPostgresMigration, runSqliteMigration } from "./migrations";
 
 export const AuditCategory = {
   Http: "http",
@@ -21,11 +23,19 @@ export const AuditStatus = {
 export type AuditStatus = (typeof AuditStatus)[keyof typeof AuditStatus];
 
 export interface AuditEventRecord {
+  event_id?: string;
   timestamp: string;
   category: AuditCategory;
   action: string;
   status: AuditStatus;
   session_id?: string;
+  actor_id?: string;
+  actor_type?: string;
+  source_ip?: string;
+  request_id?: string;
+  http_method?: string;
+  http_path?: string;
+  user_agent?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -78,16 +88,21 @@ export class AuditLogRepository {
   }
 
   async record(event: AuditEventRecord): Promise<void> {
+    const normalized: AuditEventRecord = {
+      ...event,
+      event_id: event.event_id ?? randomUUID(),
+    };
+
     if (this.cfg.db.driver === "postgres") {
-      await this.insertPostgres(event);
+      await this.insertPostgres(normalized);
       await this.prunePostgres();
     } else {
-      this.insertSqlite(event);
+      this.insertSqlite(normalized);
       this.pruneSqlite();
     }
 
     if (this.mirrorPath) {
-      await this.appendMirror(event);
+      await this.appendMirror(normalized);
     }
   }
 
@@ -110,34 +125,78 @@ export class AuditLogRepository {
   private initSqlite(): void {
     const db = this.sqliteDb();
     try {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS audit_events (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          timestamp TEXT NOT NULL,
-          category TEXT NOT NULL,
-          action TEXT NOT NULL,
-          status TEXT NOT NULL,
-          session_id TEXT,
-          metadata TEXT
-        );
-        CREATE INDEX IF NOT EXISTS audit_events_timestamp_idx ON audit_events(timestamp DESC);
-      `);
+      runSqliteMigration(db, "audit-sqlite-v1", () => {
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            category TEXT NOT NULL,
+            action TEXT NOT NULL,
+            status TEXT NOT NULL,
+            session_id TEXT,
+            actor_id TEXT,
+            actor_type TEXT,
+            source_ip TEXT,
+            request_id TEXT,
+            http_method TEXT,
+            http_path TEXT,
+            user_agent TEXT,
+            metadata TEXT
+          );
+          CREATE INDEX IF NOT EXISTS audit_events_timestamp_idx ON audit_events(timestamp DESC);
+        `);
+      });
+      this.ensureSqliteColumns(db);
     } finally {
       db.close();
     }
   }
 
+  private ensureSqliteColumns(db: Database): void {
+    const existing = new Set(
+      (db.prepare("PRAGMA table_info(audit_events)").all() as Array<{ name: string }>).map((row) => row.name),
+    );
+
+    const alterColumn = (name: string, type: string): void => {
+      if (!existing.has(name)) {
+        db.exec(`ALTER TABLE audit_events ADD COLUMN ${name} ${type}`);
+      }
+    };
+
+    alterColumn("event_id", "TEXT");
+    alterColumn("actor_id", "TEXT");
+    alterColumn("actor_type", "TEXT");
+    alterColumn("source_ip", "TEXT");
+    alterColumn("request_id", "TEXT");
+    alterColumn("http_method", "TEXT");
+    alterColumn("http_path", "TEXT");
+    alterColumn("user_agent", "TEXT");
+    db.exec("UPDATE audit_events SET event_id = printf('legacy-%d', id) WHERE event_id IS NULL OR event_id = ''");
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS audit_events_event_id_idx ON audit_events(event_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS audit_events_timestamp_idx ON audit_events(timestamp DESC)");
+  }
+
   private insertSqlite(event: AuditEventRecord): void {
     const db = this.sqliteDb();
     try {
+      this.ensureSqliteColumns(db);
       db.prepare(
-        "INSERT INTO audit_events (timestamp, category, action, status, session_id, metadata) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO audit_events (event_id, timestamp, category, action, status, session_id, actor_id, actor_type, source_ip, request_id, http_method, http_path, user_agent, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(
+        event.event_id ?? randomUUID(),
         event.timestamp,
         event.category,
         event.action,
         event.status,
         event.session_id ?? null,
+        event.actor_id ?? null,
+        event.actor_type ?? null,
+        event.source_ip ?? null,
+        event.request_id ?? null,
+        event.http_method ?? null,
+        event.http_path ?? null,
+        event.user_agent ?? null,
         event.metadata ? JSON.stringify(event.metadata) : null,
       );
     } finally {
@@ -148,25 +207,42 @@ export class AuditLogRepository {
   private listSqlite(limit: number): AuditEventRecord[] {
     const db = this.sqliteDb();
     try {
+      this.ensureSqliteColumns(db);
       const rows = db
         .prepare(
-          "SELECT timestamp, category, action, status, session_id, metadata FROM audit_events ORDER BY id DESC LIMIT ?",
+          "SELECT event_id, timestamp, category, action, status, session_id, actor_id, actor_type, source_ip, request_id, http_method, http_path, user_agent, metadata FROM audit_events ORDER BY id DESC LIMIT ?",
         )
         .all(limit) as Array<{
+        event_id: string;
         timestamp: string;
         category: AuditCategory;
         action: string;
         status: AuditStatus;
         session_id: string | null;
+        actor_id: string | null;
+        actor_type: string | null;
+        source_ip: string | null;
+        request_id: string | null;
+        http_method: string | null;
+        http_path: string | null;
+        user_agent: string | null;
         metadata: string | null;
       }>;
 
       return rows.map((row) => ({
+        event_id: row.event_id,
         timestamp: row.timestamp,
         category: row.category,
         action: row.action,
         status: row.status,
         session_id: row.session_id ?? undefined,
+        actor_id: row.actor_id ?? undefined,
+        actor_type: row.actor_type ?? undefined,
+        source_ip: row.source_ip ?? undefined,
+        request_id: row.request_id ?? undefined,
+        http_method: row.http_method ?? undefined,
+        http_path: row.http_path ?? undefined,
+        user_agent: row.user_agent ?? undefined,
         metadata: row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : undefined,
       }));
     } finally {
@@ -203,31 +279,66 @@ export class AuditLogRepository {
   }
 
   private async initPostgres(): Promise<void> {
-    const sql = await this.pgClient();
-    try {
+    const url = this.cfg.db.postgres?.url;
+    if (!url) {
+      throw new Error("db.postgres.url is required when db.driver=postgres");
+    }
+
+    await runPostgresMigration(url, "audit-postgres-v1", async (sql) => {
       await sql`
         CREATE TABLE IF NOT EXISTS audit_events (
           id BIGSERIAL PRIMARY KEY,
+          event_id TEXT NOT NULL,
           timestamp TIMESTAMPTZ NOT NULL,
           category TEXT NOT NULL,
           action TEXT NOT NULL,
           status TEXT NOT NULL,
           session_id TEXT,
+          actor_id TEXT,
+          actor_type TEXT,
+          source_ip TEXT,
+          request_id TEXT,
+          http_method TEXT,
+          http_path TEXT,
+          user_agent TEXT,
           metadata JSONB
         )
       `;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS event_id TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_id TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_type TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS source_ip TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS request_id TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS http_method TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS http_path TEXT`;
+      await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS user_agent TEXT`;
+      await sql`UPDATE audit_events SET event_id = CONCAT('legacy-', id::text) WHERE event_id IS NULL OR event_id = ''`;
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS audit_events_event_id_idx ON audit_events (event_id)`;
       await sql`CREATE INDEX IF NOT EXISTS audit_events_timestamp_idx ON audit_events (timestamp DESC)`;
-    } finally {
-      await sql.end({ timeout: 2 });
-    }
+    });
   }
 
   private async insertPostgres(event: AuditEventRecord): Promise<void> {
     const sql = await this.pgClient();
     try {
       await sql`
-        INSERT INTO audit_events (timestamp, category, action, status, session_id, metadata)
-        VALUES (${event.timestamp}::timestamptz, ${event.category}, ${event.action}, ${event.status}, ${event.session_id ?? null}, ${event.metadata ? JSON.stringify(event.metadata) : null}::jsonb)
+        INSERT INTO audit_events (event_id, timestamp, category, action, status, session_id, actor_id, actor_type, source_ip, request_id, http_method, http_path, user_agent, metadata)
+        VALUES (
+          ${event.event_id ?? randomUUID()},
+          ${event.timestamp}::timestamptz,
+          ${event.category},
+          ${event.action},
+          ${event.status},
+          ${event.session_id ?? null},
+          ${event.actor_id ?? null},
+          ${event.actor_type ?? null},
+          ${event.source_ip ?? null},
+          ${event.request_id ?? null},
+          ${event.http_method ?? null},
+          ${event.http_path ?? null},
+          ${event.user_agent ?? null},
+          ${event.metadata ? JSON.stringify(event.metadata) : null}::jsonb
+        )
       `;
     } finally {
       await sql.end({ timeout: 2 });
@@ -239,26 +350,42 @@ export class AuditLogRepository {
     try {
       const rows = await sql<
         Array<{
+          event_id: string;
           timestamp: string;
           category: AuditCategory;
           action: string;
           status: AuditStatus;
           session_id: string | null;
+          actor_id: string | null;
+          actor_type: string | null;
+          source_ip: string | null;
+          request_id: string | null;
+          http_method: string | null;
+          http_path: string | null;
+          user_agent: string | null;
           metadata: Record<string, unknown> | null;
         }>
       >`
-        SELECT timestamp, category, action, status, session_id, metadata
+        SELECT event_id, timestamp, category, action, status, session_id, actor_id, actor_type, source_ip, request_id, http_method, http_path, user_agent, metadata
         FROM audit_events
         ORDER BY id DESC
         LIMIT ${limit}
       `;
 
       return rows.map((row) => ({
+        event_id: row.event_id,
         timestamp: row.timestamp,
         category: row.category,
         action: row.action,
         status: row.status,
         session_id: row.session_id ?? undefined,
+        actor_id: row.actor_id ?? undefined,
+        actor_type: row.actor_type ?? undefined,
+        source_ip: row.source_ip ?? undefined,
+        request_id: row.request_id ?? undefined,
+        http_method: row.http_method ?? undefined,
+        http_path: row.http_path ?? undefined,
+        user_agent: row.user_agent ?? undefined,
         metadata: row.metadata ?? undefined,
       }));
     } finally {

@@ -49,6 +49,7 @@ This document defines repository-wide standards for orchestration, configuration
 - Database interactions must be implemented in `packages/db`.
 - App and feature packages must consume persistence via `@companion/db` repositories/factories, not direct `bun:sqlite` or ad-hoc driver calls.
 - For runtime portability, driver selection must remain config-driven (`db.driver`) and validated by `bun run proof:db`.
+- Schema changes must be delivered through `packages/db/src/migrations.ts` migration entries and tracked in `db_migrations`.
 
 ## Enforcement Checklist
 

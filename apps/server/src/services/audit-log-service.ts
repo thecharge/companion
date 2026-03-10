@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { type CompanionEvent, EventType, type SessionId } from "@companion/core";
+import { type CompanionEvent, EventType, type SessionId, newId } from "@companion/core";
 import {
   AuditCategory,
   type AuditCategory as AuditCategoryType,
@@ -43,27 +43,45 @@ export class AuditLogService {
   recordHttpEvent = async (params: {
     action: string;
     status: AuditStatusType;
+    request?: Request;
     sessionId?: SessionId;
+    actorId?: string;
+    actorType?: string;
     metadata?: Record<string, unknown>;
   }): Promise<void> => {
+    const httpContext = this.extractHttpContext(params.request);
+
     await this.record({
+      event_id: newId(),
       timestamp: new Date().toISOString(),
       category: AuditCategory.Http,
       action: params.action,
       status: params.status,
       session_id: params.sessionId,
-      metadata: params.metadata,
+      actor_id: params.actorId ?? httpContext.actorId,
+      actor_type: params.actorType ?? httpContext.actorType,
+      source_ip: httpContext.sourceIp,
+      request_id: httpContext.requestId,
+      http_method: httpContext.method,
+      http_path: httpContext.path,
+      user_agent: httpContext.userAgent,
+      metadata: {
+        ...params.metadata,
+        query: httpContext.query,
+      },
     });
   };
 
   recordBusEvent = async (event: CompanionEvent): Promise<void> => {
     const mapped = this.mapBusEvent(event.type);
     await this.record({
+      event_id: newId(),
       timestamp: event.ts.toISOString(),
       category: mapped.category,
       action: mapped.action,
       status: mapped.status,
       session_id: event.session_id,
+      actor_type: "system",
       metadata: { type: event.type },
     });
   };
@@ -99,5 +117,52 @@ export class AuditLogService {
       return { category: AuditCategory.Session, action: "message", status: AuditStatus.Ok };
     }
     return { category: AuditCategory.Session, action: "event", status: AuditStatus.Ok };
+  };
+
+  private extractHttpContext = (
+    request?: Request,
+  ): {
+    actorId?: string;
+    actorType?: string;
+    sourceIp?: string;
+    requestId?: string;
+    method?: string;
+    path?: string;
+    userAgent?: string;
+    query?: string;
+  } => {
+    if (!request) {
+      return {};
+    }
+
+    const headers = request.headers;
+    const forwarded = headers.get("x-forwarded-for") ?? "";
+    const sourceIp = (forwarded.split(",")[0]?.trim() || headers.get("x-real-ip")) ?? undefined;
+    const actorId =
+      headers.get("x-companion-actor-id") ??
+      headers.get("x-user-id") ??
+      headers.get("x-slack-user-id") ??
+      headers.get("x-telegram-user-id") ??
+      undefined;
+
+    const actorType =
+      headers.get("x-companion-actor-type") ??
+      (headers.has("x-slack-signature") || headers.has("x-telegram-bot-api-secret-token")
+        ? "integration"
+        : headers.has("authorization") || headers.has("x-api-key")
+          ? "service"
+          : undefined);
+
+    const url = new URL(request.url);
+    return {
+      actorId,
+      actorType,
+      sourceIp,
+      requestId: headers.get("x-request-id") ?? undefined,
+      method: request.method,
+      path: url.pathname,
+      query: url.search,
+      userAgent: headers.get("user-agent") ?? undefined,
+    };
   };
 }

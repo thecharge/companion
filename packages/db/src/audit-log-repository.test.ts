@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -100,6 +101,44 @@ describe("audit log repository", () => {
 
     const rotated = await readFile(`${mirrorPath}.1`, "utf8").catch(() => "");
     expect(rotated.length > 0).toBe(true);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("upgrades legacy sqlite audit schema to include who/where columns", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "companion-audit-legacy-"));
+    const dbPath = join(dir, "audit.db");
+
+    const db = new Database(dbPath, { create: true });
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        category TEXT NOT NULL,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        session_id TEXT,
+        metadata TEXT
+      )
+    `);
+    db.close();
+
+    const cfg = makeConfig(dbPath);
+    const repo = new AuditLogRepository({ cfg });
+    await repo.initialize();
+    await repo.record({
+      timestamp: new Date().toISOString(),
+      category: "http",
+      action: "legacy_upgrade",
+      status: "ok",
+      actor_id: "tester",
+      http_path: "/legacy",
+    });
+
+    const events = await repo.listRecent(5);
+    expect(events[0]?.action).toBe("legacy_upgrade");
+    expect(events[0]?.actor_id).toBe("tester");
+    expect(events[0]?.http_path).toBe("/legacy");
 
     await rm(dir, { recursive: true, force: true });
   });

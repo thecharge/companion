@@ -30,6 +30,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Usage guide: `Docs/USAGE_GUIDE.md`
 - Development guide: `Docs/DEVELOPMENT_GUIDE.md`
 - Engineering standards: `Docs/ENGINEERING_STANDARDS.md`
+- Database architecture and migrations: `Docs/DATABASE_ARCHITECTURE.md`
 
 ## Prerequisites
 - Python 3.x

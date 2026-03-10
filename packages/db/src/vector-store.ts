@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { Config } from "@companion/config";
+import { runPostgresMigration, runSqliteMigration } from "./migrations";
 
 export interface VectorEntry {
   id: string;
@@ -48,17 +49,19 @@ export class SqliteVectorStore implements VectorStore {
   }
 
   private init(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS vectors (
-        id         TEXT    NOT NULL PRIMARY KEY,
-        session_id TEXT    NOT NULL,
-        content    TEXT    NOT NULL,
-        embedding  BLOB    NOT NULL,
-        metadata   TEXT,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now','utc'))
-      );
-      CREATE INDEX IF NOT EXISTS vectors_session_idx ON vectors(session_id);
-    `);
+    runSqliteMigration(this.db, "vectors-sqlite-v1", () => {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS vectors (
+          id         TEXT    NOT NULL PRIMARY KEY,
+          session_id TEXT    NOT NULL,
+          content    TEXT    NOT NULL,
+          embedding  BLOB    NOT NULL,
+          metadata   TEXT,
+          created_at TEXT    NOT NULL DEFAULT (datetime('now','utc'))
+        );
+        CREATE INDEX IF NOT EXISTS vectors_session_idx ON vectors(session_id);
+      `);
+    });
   }
 
   async upsert(entry: VectorEntry): Promise<void> {
@@ -113,6 +116,7 @@ export class SqliteVectorStore implements VectorStore {
 
 export class PostgresVectorStore implements VectorStore {
   private readonly url: string;
+  private initPromise?: Promise<void>;
 
   constructor(url: string) {
     this.url = url;
@@ -123,19 +127,29 @@ export class PostgresVectorStore implements VectorStore {
     return module.default(this.url, { max: 1, idle_timeout: 5 });
   }
 
+  private ensureInitialized(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = runPostgresMigration(this.url, "vectors-postgres-v1", async (sql) => {
+        await sql`
+          CREATE TABLE IF NOT EXISTS vectors (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            embedding JSONB NOT NULL,
+            metadata JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `;
+        await sql`CREATE INDEX IF NOT EXISTS vectors_session_idx ON vectors(session_id)`;
+      });
+    }
+    return this.initPromise;
+  }
+
   async upsert(entry: VectorEntry): Promise<void> {
+    await this.ensureInitialized();
     const sql = await this.sql();
     try {
-      await sql`
-        CREATE TABLE IF NOT EXISTS vectors (
-          id TEXT PRIMARY KEY,
-          session_id TEXT NOT NULL,
-          content TEXT NOT NULL,
-          embedding JSONB NOT NULL,
-          metadata JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `;
       await sql`
         INSERT INTO vectors (id, session_id, content, embedding, metadata)
         VALUES (${entry.id}, ${entry.session_id}, ${entry.content}, ${JSON.stringify(entry.embedding)}::jsonb, ${entry.metadata ? JSON.stringify(entry.metadata) : null}::jsonb)
@@ -150,19 +164,9 @@ export class PostgresVectorStore implements VectorStore {
   }
 
   async search(sessionId: string, query: number[], topK: number, minScore: number): Promise<VectorSearchResult[]> {
+    await this.ensureInitialized();
     const sql = await this.sql();
     try {
-      await sql`
-        CREATE TABLE IF NOT EXISTS vectors (
-          id TEXT PRIMARY KEY,
-          session_id TEXT NOT NULL,
-          content TEXT NOT NULL,
-          embedding JSONB NOT NULL,
-          metadata JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `;
-
       const rows = await sql<
         {
           id: string;

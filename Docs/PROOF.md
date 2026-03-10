@@ -74,6 +74,9 @@ bun run proof:db -- --strict
 
 Strict mode exits non-zero when any DB/vector/audit proof check fails.
 
+Architecture reference:
+- `Docs/DATABASE_ARCHITECTURE.md`
+
 ## 5) Workflow-Based Evidence
 
 - CI: `.github/workflows/ci.yml`
