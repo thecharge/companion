@@ -13,6 +13,16 @@ import type { AppContext } from "./app-context";
 
 const log = new Logger("server");
 
+const LOW_SIGNAL_GET_PATHS = new Set(["/sessions", "/capabilities", "/audit/events"]);
+
+const shouldLogInfo = (method: string, pathName: string): boolean => {
+  if (method !== "GET") {
+    return true;
+  }
+
+  return !LOW_SIGNAL_GET_PATHS.has(pathName);
+};
+
 type ServerWebSocket = import("bun").ServerWebSocket<{ session_id: string }>;
 
 export const createServerRuntime = (
@@ -38,13 +48,22 @@ export const createServerRuntime = (
         });
       };
       const logResponse = (response: Response): Response => {
-        log.info(`${req.method} ${url.pathname} -> ${response.status} (${Date.now() - startedAt}ms)`, {
-          request_id: requestId,
-        });
+        const msg = `${req.method} ${url.pathname} -> ${response.status} (${Date.now() - startedAt}ms)`;
+        const meta = { request_id: requestId };
+        if (shouldLogInfo(req.method, url.pathname)) {
+          log.info(msg, meta);
+        } else {
+          log.debug(msg);
+        }
         return withRequestId(response);
       };
 
-      log.info(`${req.method} ${url.pathname} <- request`, { request_id: requestId });
+      const requestMsg = `${req.method} ${url.pathname} <- request`;
+      if (shouldLogInfo(req.method, url.pathname)) {
+        log.info(requestMsg, { request_id: requestId });
+      } else {
+        log.debug(requestMsg);
+      }
 
       if (!isAuthorizedRequest(req, ctx.cfg)) {
         return logResponse(withSecurityHeaders(unauthorizedResponse()));

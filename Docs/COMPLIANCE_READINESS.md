@@ -42,7 +42,8 @@ Current:
 - Local-first architecture reduces data exposure
 - Security response headers are enabled in server responses
 - Startup checks now surface unsafe runtime posture (missing sandbox image, direct fallback)
-- Audit events are now persisted as NDJSON (`COMPANION_AUDIT_LOG_PATH`, default `./data/audit-events.ndjson`) and can be queried via authenticated `/audit/events`.
+- Audit events are persisted in the configured DB backend and can be queried via authenticated `/audit/events`.
+- Optional NDJSON mirroring is available only when `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH` are set.
 
 Needed:
 - Identity and RBAC (user/service principals)

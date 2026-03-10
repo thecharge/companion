@@ -185,7 +185,8 @@ These are consumed directly by code paths and are not primary schema keys.
 
 | Env Var | Default | Where Used | Meaning |
 | --- | --- | --- | --- |
-| `COMPANION_AUDIT_LOG_PATH` | `./data/audit-events.ndjson` | server bootstrap | File path for append-only NDJSON audit event storage. |
+| `COMPANION_AUDIT_MIRROR_ENABLED` | `false` | server bootstrap | Enables optional NDJSON audit file mirroring when set to `true`. |
+| `COMPANION_AUDIT_LOG_PATH` | `./data/audit-events.ndjson` | server bootstrap | NDJSON mirror path used only when `COMPANION_AUDIT_MIRROR_ENABLED=true`. |
 | `NODE_ENV` | unset | startup checks | Enables production safety warnings when set to `production`. |
 | `COMPANION_URL` | unset | TUI client | Full API base URL override for TUI; if set, it wins over host/port derivation. |
 | `COMPANION_HOST` | unset | TUI client | Host override for TUI when `COMPANION_URL` is not set. |

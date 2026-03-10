@@ -70,11 +70,13 @@ export const createHttpRouter = (ctx: AppContext): ((req: Request) => Promise<Re
       const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
       await ctx.auditLogService.recordHttpEvent({ action: "audit_events_list", status: "ok", request: req });
       const events = await ctx.auditLogService.listRecent(limit);
+      const mirrorEnabled = (process.env.COMPANION_AUDIT_MIRROR_ENABLED ?? "false").trim().toLowerCase() === "true";
       return Response.json({
         events,
         audit: {
           backend: ctx.cfg.db.driver,
-          ndjson_mirror_enabled: Boolean(process.env.COMPANION_AUDIT_LOG_PATH?.trim()),
+          mirror_enabled: mirrorEnabled,
+          ndjson_mirror_enabled: mirrorEnabled && Boolean(process.env.COMPANION_AUDIT_LOG_PATH?.trim()),
         },
       });
     }

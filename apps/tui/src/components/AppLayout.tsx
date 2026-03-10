@@ -192,6 +192,10 @@ export const AppLayout = ({
         caps={caps}
         auditEvents={auditEvents}
         activeSessionId={activeSessionId}
+        task={task}
+        actionLog={actionLog}
+        streaming={streaming}
+        wsConnected={wsConnected}
         active={pane === Pane.Capabilities}
         loaderFrameIndex={loaderFrameIndex}
       />

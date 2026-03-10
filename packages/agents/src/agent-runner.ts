@@ -17,6 +17,12 @@ const asksForLiveSystemLoad = (message: string): boolean => {
   );
 };
 
+const looksLikeFileMutationClaim = (text: string): boolean => {
+  return /(created|wrote|saved|updated|edited|renamed|deleted|moved)\b[\s\S]{0,80}\b(file|folder|directory|script)\b/i.test(
+    text,
+  );
+};
+
 export class AgentRunner {
   constructor(
     private agentName: string,
@@ -87,6 +93,7 @@ export class AgentRunner {
     });
 
     let lastFailedSig: string | null = null;
+    let successfulToolCalls = 0;
 
     for (let turn = 0; turn < maxTurns; turn++) {
       if (signal?.aborted) {
@@ -183,8 +190,22 @@ export class AgentRunner {
       }
 
       if (!isToolCall(response)) {
+        const plainReply = response.content ?? "";
+        if (successfulToolCalls === 0 && looksLikeFileMutationClaim(plainReply)) {
+          const guardedReply =
+            "I did not execute file tools successfully in this run, so no file changes were applied. " +
+            "I can run the required tool operations and then verify the resulting paths explicitly.";
+          bus.emit({
+            type: "agent_thought",
+            session_id: params.session_id,
+            ts: new Date(),
+            payload: { agent: this.agentName, text: guardedReply },
+          });
+          this._end(params.session_id, "done");
+          return { reply: guardedReply, stopped_reason: "done" };
+        }
         this._end(params.session_id, "done");
-        return { reply: response.content ?? "", stopped_reason: "done" };
+        return { reply: plainReply, stopped_reason: "done" };
       }
 
       const toolResults: ChatMessage[] = [];
@@ -234,6 +255,9 @@ export class AgentRunner {
         });
 
         lastFailedSig = result.error ? sig : null;
+        if (!result.error) {
+          successfulToolCalls += 1;
+        }
         toolResults.push({
           role: "tool",
           content: result.result ?? result.error ?? "no output",

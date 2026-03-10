@@ -19,13 +19,14 @@ function resolveTemplate(value: string): string {
   return process.env[envName] ?? fallback;
 }
 
-function readServerFromCompanionYaml(): { host?: string; port?: string } {
+function readServerFromCompanionYaml(): { host?: string; port?: string; secret?: string } {
   try {
     const raw = readFileSync(join(process.cwd(), "companion.yaml"), "utf8");
     const lines = raw.split("\n");
     let inServer = false;
     let host = "";
     let port = "";
+    let secret = "";
 
     for (const line of lines) {
       if (!inServer) {
@@ -34,15 +35,16 @@ function readServerFromCompanionYaml(): { host?: string; port?: string } {
       }
 
       if (/^[^\s#].*:\s*$/.test(line)) break;
-      const kv = line.match(/^\s{2}(host|port):\s*(.+)$/);
+      const kv = line.match(/^\s{2}(host|port|secret):\s*(.+)$/);
       if (!kv) continue;
       const key = kv[1] ?? "";
       const value = resolveTemplate(trimYamlValue(kv[2] ?? ""));
       if (key === "host") host = value;
       if (key === "port") port = value;
+      if (key === "secret") secret = value;
     }
 
-    return { host, port };
+    return { host, port, secret };
   } catch {
     return {};
   }
@@ -62,7 +64,7 @@ function resolveServerUrl(): string {
 
 export const SERVER = resolveServerUrl();
 export const WS_URL = SERVER.replace(/^http/, "ws");
-export const SECRET = process.env.COMPANION_SECRET ?? "";
+export const SECRET = process.env.COMPANION_SECRET ?? readServerFromCompanionYaml().secret ?? "";
 export const VISIBLE_MESSAGES = 12;
 export const DEFAULT_SESSION_TITLE_PREFIX = "Chat";
 

@@ -36,7 +36,14 @@ function skillTargetAgents(cfg: Config): string[] {
 }
 
 function attachLoadedSkillsToAgents(cfg: Config, skills: Skill[]): void {
-  const toolNames = skills.flatMap((skill) => skill.tools.map((tool) => tool.name));
+  const toolNames = skills.flatMap((skill) =>
+    skill.tools
+      .filter((tool) => {
+        const mode = (tool.kind ?? (tool.guide && !tool.script ? "guide" : "script")).toLowerCase();
+        return mode === "guide";
+      })
+      .map((tool) => tool.name),
+  );
   if (!toolNames.length) return;
 
   const targets = skillTargetAgents(cfg);
@@ -51,6 +58,7 @@ function attachLoadedSkillsToAgents(cfg: Config, skills: Skill[]): void {
   }
 
   log.info("attached loaded skills to agents", {
+    mode: "guide-only",
     skill_tools: toolNames.length,
     target_agents: targets,
   });
@@ -122,12 +130,14 @@ export const createAppContext = async (): Promise<AppContext> => {
   });
 
   const embedAvailable = await checkEmbedAvailability(embedBaseUrl, embedModelName);
-  const auditLogPath = process.env.COMPANION_AUDIT_LOG_PATH?.trim() || undefined;
+  const auditMirrorEnabled = (process.env.COMPANION_AUDIT_MIRROR_ENABLED ?? "false").trim().toLowerCase() === "true";
+  const auditLogPath = auditMirrorEnabled ? process.env.COMPANION_AUDIT_LOG_PATH?.trim() || undefined : undefined;
   const auditLogRepository = new AuditLogRepository({ cfg, mirrorPath: auditLogPath });
   const auditLogService = new AuditLogService(auditLogRepository);
   await auditLogService.initialize();
   log.info("audit repository initialized", {
     storage: cfg.db.driver,
+    audit_mirror_enabled: auditMirrorEnabled,
     ndjson_mirror: auditLogPath ?? "disabled",
   });
   bus.on("*", (event) => {

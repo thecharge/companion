@@ -33,16 +33,14 @@ mode:
 - `1`, `2`, `3` switch mode.
 - `r` reopens the currently selected session and reconnects chat stream.
 - `v` toggles status details (`agent/tool` log and audit tail) in Chat pane.
-- In Capabilities pane: `1/2/3/4` or `a/t/s/u` switch tabs (`agents/tools/skills/audit`).
-- In Capabilities pane: `j/k` or arrows scroll; `PgUp/PgDn` page; `g/G` jump top/bottom.
-- In Capabilities `Audit` tab: `f` toggles scope between active-session events and all events.
-- In Capabilities `Audit` tab: `p` pauses/resumes live updates while you inspect entries.
+- In Activity pane: `f` toggles audit scope between active-session events and all events.
+- In Activity pane: `p` pauses/resumes live audit updates while you inspect entries.
 - `Esc` cancels active task.
 
-Capabilities pane behavior:
+Activity pane behavior:
 - Loading now uses braille-shift animation rather than static text.
-- `Audit` tab shows recent server audit events from `/audit/events`.
-- While Capabilities is focused, background polling is slower to reduce pane jitter.
+- Shows live `ws` connectivity status, current agent/task stage, recent audit events, and recent logs.
+- Audit entries are bounded to recent events to avoid jumpy rendering.
 
 ## Skill Types
 
@@ -70,7 +68,8 @@ Capabilities pane behavior:
 ## Audit Storage And Verification
 
 - Audit events are persisted in the configured DB backend (`sqlite` or `postgres`).
-- NDJSON mirror is disabled by default and only enabled when `COMPANION_AUDIT_LOG_PATH` is set.
+- NDJSON mirror is disabled by default.
+- To enable file mirroring, set `COMPANION_AUDIT_MIRROR_ENABLED=true` and `COMPANION_AUDIT_LOG_PATH`.
 - `GET /audit/events` now includes storage metadata:
   - `audit.backend`
   - `audit.ndjson_mirror_enabled`

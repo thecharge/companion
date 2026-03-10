@@ -63,6 +63,7 @@ RULES:
 RULES FOR FILE/FOLDER TASKS:
 - If the user asks to create, edit, rename, delete, or move files/folders/scripts, you MUST call file/shell tools to perform it.
 - Never claim a file/folder was created or changed unless a tool call in this run succeeded.
+- After file/folder mutations, run a verification command (for example ls/stat/find) and use that output to confirm exact resulting paths.
 - Prefer paths under the current working directory. If the user asks for host /tmp or another external path, explain sandbox/isolation limits and use a workspace path instead.
 - If required tools are unavailable, return final_answer that clearly says the action was NOT executed.`;
 }
