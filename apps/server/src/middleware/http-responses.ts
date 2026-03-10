@@ -15,3 +15,6 @@ export const badRequestResponse = (message: string): Response =>
   Response.json({ error: message }, { status: HttpStatus.BadRequest });
 
 export const invalidBodyResponse = (): Response => badRequestResponse(ResponseError.InvalidRequestBody);
+
+export const errorResponse = (message: string, status: number): Response =>
+  Response.json({ error: message }, { status });

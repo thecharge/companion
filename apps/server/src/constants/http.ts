@@ -14,6 +14,7 @@ export const HttpStatus = {
   Ok: 200,
   Created: 201,
   Accepted: 202,
+  TooManyRequests: 429,
   BadRequest: 400,
   Unauthorized: 401,
   NotFound: 404,
@@ -61,5 +62,6 @@ export const ResponseError = {
   Unauthorized: "Unauthorized",
   NotFound: "Not found",
   ContentRequired: "content is required",
+  SessionBusy: "session is busy processing another message",
   InvalidRequestBody: "Invalid request body",
 } as const;

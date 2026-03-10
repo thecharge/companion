@@ -31,7 +31,10 @@ mode:
 - `/wd /absolute/path` sets session working directory.
 - `/wd` shows current working directory.
 - `1`, `2`, `3` switch mode.
+- `r` reopens the currently selected session and reconnects chat stream.
+- `v` toggles status details (`agent/tool` log and audit tail) in Chat pane.
 - In Capabilities pane: `1/2/3/4` or `a/t/s/u` switch tabs (`agents/tools/skills/audit`).
+- In Capabilities pane: `j/k` or arrows scroll; `PgUp/PgDn` page; `g/G` jump top/bottom.
 - `Esc` cancels active task.
 
 Capabilities pane behavior:

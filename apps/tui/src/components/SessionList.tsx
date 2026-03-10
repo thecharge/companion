@@ -43,7 +43,7 @@ export function SessionList({
     <Box flexDirection="column" width={34} borderStyle="single" borderColor={active ? "cyan" : "gray"}>
       <Text bold color="cyan">
         {" "}
-        Sessions {active ? "[n=new d=del up/down]" : ""}
+        Sessions {active ? "[n=new d=del r=reopen up/down]" : ""}
       </Text>
       {sessions.length === 0 && <Text color="gray"> (none) - press n</Text>}
       {start > 0 && <Text color="gray"> ... {start} older</Text>}
@@ -61,7 +61,7 @@ export function SessionList({
       })}
       {start + VISIBLE_SESSIONS < sessions.length && <Text color="gray"> ... more below</Text>}
       <Box marginTop={1}>
-        <Text color="gray"> n=new d=del Enter=open up/down or j/k</Text>
+        <Text color="gray"> n=new d=del r=reopen Enter=open up/down or j/k</Text>
       </Box>
     </Box>
   );

@@ -62,6 +62,8 @@ function toToolName(name: string): string {
 
 function cleanDescription(text: string): string {
   return text
+    .replace(/\[Relevant memories\][\s\S]*$/i, "")
+    .replace(/The current time is [^.]+\.?/gi, "")
     .replace(/[\r\n]+/g, " ")
     .trim()
     .slice(0, 240);
@@ -73,7 +75,32 @@ function isGitBranchHygieneSpec(spec: ProposedSkillSpec): boolean {
 }
 
 export function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
-  const normalized = message.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+  const cleanedMessage = cleanDescription(message);
+  const normalized = cleanedMessage.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+
+  const compositeOps =
+    /\b(weather|temperature|forecast)\b/.test(normalized) &&
+    /\b(system\s+load|cpu\s+load|load\s+average|uptime)\b/.test(normalized) &&
+    /\b(time|date|utc)\b/.test(normalized);
+
+  if (compositeOps) {
+    return {
+      name: "system_load_weather_time_skill",
+      description: "Reusable automation for current UTC time, host system load, and weather summary.",
+      tool_name: "system_load_weather_time",
+      why: "Request combines multiple recurring ops checks into one repeatable workflow.",
+      parameters: [
+        {
+          name: "city",
+          type: "string",
+          description: "City name for weather lookup",
+          required: true,
+        },
+      ],
+      script_hint: "Print UTC time and uptime, then fetch weather via Open-Meteo geocoding + forecast.",
+    };
+  }
+
   const afterFor = normalized.match(/\bfor\s+(.+)$/)?.[1] ?? normalized;
   const tokens = afterFor
     .split(/\s+/)
@@ -88,7 +115,7 @@ export function defaultSkillProposalFromMessage(message: string): Partial<Propos
 
   return {
     name: `${stem}_skill`,
-    description: `Generated skill for: ${message.slice(0, 140)}`,
+    description: `Reusable automation for: ${cleanedMessage.slice(0, 140)}`,
     tool_name: `${stem}_task`,
     why: "Explicit user request to create a reusable skill.",
     parameters: [

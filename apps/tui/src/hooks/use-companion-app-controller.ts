@@ -6,9 +6,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import {
+  BRAILLE_SHIFT_FRAMES,
   DEFAULT_SESSION_TITLE_PREFIX,
   HARD_TIMEOUT_MS,
-  LOADER_FRAMES,
   MAX_LOG_ENTRIES,
   POLL_INTERVAL_MS,
   SERVER,
@@ -130,13 +130,15 @@ export const useCompanionAppController = (): CompanionAppController => {
   useEffect(() => {
     if (!streaming && !task) return;
     const timer = setInterval(() => {
-      setLoaderFrameIndex((index) => (index + 1) % LOADER_FRAMES.length);
+      setLoaderFrameIndex((index) => (index + 1) % BRAILLE_SHIFT_FRAMES.length);
     }, 200);
     return () => clearInterval(timer);
   }, [streaming, task]);
 
   useEffect(
     () => () => {
+      wsFacadeRef.current?.cancelCurrentSession();
+      abortCtrlRef.current?.abort();
       wsFacadeRef.current?.close();
     },
     [],

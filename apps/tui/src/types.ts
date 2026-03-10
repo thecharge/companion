@@ -58,11 +58,19 @@ export interface Caps {
 }
 
 export interface AuditEvent {
+  event_id?: string;
   timestamp: string;
   category: "http" | "agent" | "tool" | "session" | "error";
   action: string;
   status: "ok" | "error";
   session_id?: string;
+  actor_id?: string;
+  actor_type?: string;
+  source_ip?: string;
+  request_id?: string;
+  http_method?: string;
+  http_path?: string;
+  user_agent?: string;
   metadata?: Record<string, unknown>;
 }
 

@@ -3,7 +3,7 @@ import type { Blackboard } from "@companion/core";
 import { createLLMClient } from "@companion/llm";
 import { loadSkillsDir, registerSkills } from "@companion/skills";
 import type { ToolRegistry } from "@companion/tools";
-import { resolveSkillWorkerAgents } from "./role-policy";
+import { resolvePromotedAgents, resolveResponderAgent, resolveSkillWorkerAgents } from "./role-policy";
 import {
   PENDING_SKILL_KEY,
   type ProposedSkillSpec,
@@ -41,7 +41,13 @@ export const handlePendingSkillProposal = async (params: {
       const loadedSkills = await loadSkillsDir("./skills");
       await registerSkills(loadedSkills, params.registry);
 
-      for (const agentName of resolveSkillWorkerAgents(params.cfg)) {
+      const candidateAgents = new Set<string>([
+        resolveResponderAgent(params.cfg),
+        ...resolvePromotedAgents(params.cfg),
+        ...resolveSkillWorkerAgents(params.cfg),
+      ]);
+
+      for (const agentName of candidateAgents) {
         const agent = params.cfg.agents[agentName];
         if (!agent) continue;
         if (!agent.tools.includes(created.spec.tool_name)) {

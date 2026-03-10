@@ -7,7 +7,7 @@ import { AgentRunner } from "./agent-runner";
 import { executeDirectToolCalls } from "./direct-tool-execution";
 import { resolveIntentAgent } from "./intent-routing";
 import { decideOrchestratorAction } from "./orchestrator-decision-strategy";
-import { hasSkillIntent } from "./patterns";
+import { hasCompositeOpsIntent, hasSkillIntent } from "./patterns";
 import { resolveResponderAgent } from "./role-policy";
 import { buildRuntimeConfig } from "./runtime-config";
 import { defaultSkillProposalFromMessage, normalizeSkillSpec } from "./skill-acquisition";
@@ -28,6 +28,10 @@ export const detectWorkflowTrack = (message: string, cfg?: Config): WorkflowTrac
 const shouldConsiderSkillAcquisition = (message: string, blackboard: Blackboard): boolean => {
   const explicitIntent = hasSkillIntent(message);
   if (explicitIntent) return true;
+
+  if (hasCompositeOpsIntent(message)) {
+    return true;
+  }
 
   const rejections = blackboard.read("rejections");
   return Array.isArray(rejections) && rejections.length >= 3;

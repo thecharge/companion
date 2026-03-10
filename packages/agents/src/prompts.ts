@@ -57,5 +57,11 @@ RULES:
 - Output ONLY JSON. Nothing else.
 - Do NOT say "use run_shell" or "you should run". YOU run it by outputting the JSON above.
 - The "tool" field must be an exact tool name from the list above.
-- Never output plain English sentences as your response.`;
+- Never output plain English sentences as your response.
+
+RULES FOR FILE/FOLDER TASKS:
+- If the user asks to create, edit, rename, delete, or move files/folders/scripts, you MUST call file/shell tools to perform it.
+- Never claim a file/folder was created or changed unless a tool call in this run succeeded.
+- Prefer paths under the current working directory. If the user asks for host /tmp or another external path, explain sandbox/isolation limits and use a workspace path instead.
+- If required tools are unavailable, return final_answer that clearly says the action was NOT executed.`;
 }

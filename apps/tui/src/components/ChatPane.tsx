@@ -66,9 +66,14 @@ function ActiveTaskBox({ task }: { task: ActiveTask }) {
 
 function ActionLog({ entries }: { entries: LogEntry[] }) {
   if (!entries.length) return null;
+
+  const nonRetry = entries.filter((entry) => !entry.text.startsWith("WS retry"));
+  const lastRetry = [...entries].reverse().find((entry) => entry.text.startsWith("WS retry"));
+  const compact = [...nonRetry.slice(-2), ...(lastRetry ? [lastRetry] : [])].slice(-3);
+
   return (
     <Box flexDirection="column" paddingX={1}>
-      {entries.slice(-6).map((entry) => (
+      {compact.map((entry) => (
         <Text key={`${entry.ts}-${entry.text}`} color="gray" dimColor>
           {entry.ts} {entry.text}
         </Text>
@@ -126,6 +131,7 @@ export function ChatPane({
   const [input, setInput] = useState("");
   const [focused, setFocus] = useState(false);
   const [scrollOffset, setScroll] = useState(0);
+  const [showStatusPanel, setShowStatusPanel] = useState(false);
   const prevSessionId = useRef<string | undefined>();
   const prevMessageCount = useRef(0);
 
@@ -161,6 +167,7 @@ export function ChatPane({
       if (key.upArrow) setScroll((s) => Math.min(s + 1, Math.max(0, messages.length - VISIBLE_MESSAGES)));
       if (key.downArrow) setScroll((s) => Math.max(0, s - 1));
       if (key.return && messages.length > 0) setScroll(0);
+      if (ch.toLowerCase() === "v") setShowStatusPanel((current) => !current);
     }
 
     if (ch === "1") onModeChange(SessionMode.Local);
@@ -227,8 +234,8 @@ export function ChatPane({
           </Box>
 
           {task && <ActiveTaskBox task={task} />}
-          <ActionLog entries={actionLog} />
-          <AuditTail events={auditEvents} />
+          {showStatusPanel && <ActionLog entries={actionLog} />}
+          {showStatusPanel && <AuditTail events={auditEvents} />}
 
           <Box borderStyle="round" borderColor={focused ? "green" : streaming ? "yellow" : "gray"} marginTop={1}>
             {streaming ? (
@@ -247,7 +254,7 @@ export function ChatPane({
                 placeholder="Message..."
               />
             ) : (
-              <Text color="gray"> Enter or / to type, up/down scroll, 1/2/3 mode, /wd &lt;path&gt;</Text>
+              <Text color="gray"> Enter or / to type, up/down scroll, v status, 1/2/3 mode, /wd &lt;path&gt;</Text>
             )}
           </Box>
         </>

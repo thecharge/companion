@@ -22,6 +22,7 @@ export const App = () => {
       setPane: controller.setPane,
       clearReconnectTimer: controller.clearReconnectTimer,
       closeSocket: controller.closeSocket,
+      abortStreaming: controller.abortStreaming,
       exitApp: exit,
       createSession: () => void controller.createSession(),
       deleteSession: (sessionId) => {

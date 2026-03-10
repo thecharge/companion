@@ -19,6 +19,11 @@ const WEATHER_TASK_PATTERNS = [
   /\bwhat(?:'s| is)\s+the\s+weather\b/i,
 ] as const;
 
+const TIME_TASK_PATTERNS = [
+  /\b(current\s+time|time\s+now|what\s+time\s+is\s+it|utc\s+time|local\s+time)\b/i,
+  /\bdate\b/i,
+] as const;
+
 export function hasSkillIntent(message: string): boolean {
   return SKILL_INTENT_PATTERNS.some((pattern) => pattern.test(message));
 }
@@ -33,4 +38,12 @@ export function hasSystemTaskIntent(message: string): boolean {
 
 export function hasWeatherTaskIntent(message: string): boolean {
   return WEATHER_TASK_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+export function hasTimeTaskIntent(message: string): boolean {
+  return TIME_TASK_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+export function hasCompositeOpsIntent(message: string): boolean {
+  return hasSystemTaskIntent(message) && hasWeatherTaskIntent(message) && hasTimeTaskIntent(message);
 }

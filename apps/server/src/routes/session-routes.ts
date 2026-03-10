@@ -24,7 +24,7 @@ import {
   ResponseError,
   RoutePath,
 } from "../constants/http";
-import { badRequestResponse, invalidBodyResponse, notFoundResponse } from "../middleware/http-responses";
+import { badRequestResponse, errorResponse, invalidBodyResponse, notFoundResponse } from "../middleware/http-responses";
 import type { AuditLogService } from "../services/audit-log-service";
 import type { SessionMessageService } from "../services/session-message-service";
 
@@ -198,6 +198,16 @@ export const handleSessionRoutes = async (
 
   if (subPath === RoutePath.SessionMessagesSuffix && method === HttpMethod.Post) {
     if (!session) return notFoundResponse();
+
+    if (ctx.activeCancels.has(sessionId)) {
+      await auditLogService.recordHttpEvent({
+        action: "session_message_rejected_busy",
+        status: "error",
+        request: req,
+        sessionId,
+      });
+      return errorResponse(ResponseError.SessionBusy, HttpStatus.TooManyRequests);
+    }
 
     const body = await parseJsonBody<MessagePostBody>(req);
     if (!body) return invalidBodyResponse();

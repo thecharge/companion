@@ -34,8 +34,9 @@ const tabItems = (
 
   if (tab === "audit") {
     return auditEvents.map((event) => ({
-      title: `${event.status.toUpperCase()} ${event.category}`,
-      detail: event.action,
+      title:
+        `${event.status.toUpperCase()} ${event.category} ${event.http_method ?? ""} ${event.http_path ?? ""}`.trim(),
+      detail: `${event.action}${event.actor_id ? ` actor=${event.actor_id}` : ""}${event.source_ip ? ` ip=${event.source_ip}` : ""}${event.request_id ? ` req=${event.request_id}` : ""}`,
       extra: new Date(event.timestamp).toLocaleTimeString("en", { hour12: false }),
     }));
   }
@@ -105,6 +106,25 @@ export function CapabilitiesPane({
       const maxOffset = Math.max(0, itemCount - PAGE_SIZE);
       setOffset((current) => Math.min(maxOffset, current + 1));
     }
+
+    if (key.pageUp) {
+      setOffset((current) => Math.max(0, current - PAGE_SIZE));
+    }
+
+    if (key.pageDown) {
+      const itemCount = caps ? tabItems(tab, caps, auditEvents).length : 0;
+      const maxOffset = Math.max(0, itemCount - PAGE_SIZE);
+      setOffset((current) => Math.min(maxOffset, current + PAGE_SIZE));
+    }
+
+    if (ch === "g") {
+      setOffset(0);
+    }
+
+    if (ch === "G") {
+      const itemCount = caps ? tabItems(tab, caps, auditEvents).length : 0;
+      setOffset(Math.max(0, itemCount - PAGE_SIZE));
+    }
   });
 
   const items = caps ? tabItems(tab, caps, auditEvents) : [];
@@ -127,7 +147,7 @@ export function CapabilitiesPane({
           </Box>
           {offset > 0 && (
             <Text color="gray" dimColor>
-              offset {offset} (up/down or j/k)
+              offset {offset} (up/down j/k, PgUp/PgDn, g/G)
             </Text>
           )}
 

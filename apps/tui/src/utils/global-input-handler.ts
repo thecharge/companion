@@ -13,6 +13,7 @@ interface InputHandlerParams {
   setPane: React.Dispatch<React.SetStateAction<Pane>>;
   clearReconnectTimer: () => void;
   closeSocket: () => void;
+  abortStreaming: () => void;
   exitApp: () => void;
   createSession: () => void;
   deleteSession: (sessionId: string) => void;
@@ -31,10 +32,19 @@ export const handleGlobalInput = (
     );
   }
 
-  if (params.pane === Pane.Sessions && ch === "q") {
+  if (ch === "q") {
+    params.abortStreaming();
     params.clearReconnectTimer();
     params.closeSocket();
     params.exitApp();
+  }
+
+  if (ch === "r") {
+    const selected = params.sessions[params.selectedSessionIndex];
+    if (selected) {
+      params.openSession(selected);
+      params.setPane(Pane.Chat);
+    }
   }
 
   if (params.pane !== Pane.Sessions) {

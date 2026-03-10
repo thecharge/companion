@@ -28,6 +28,7 @@ describe("global input handler", () => {
         setPane: () => {},
         clearReconnectTimer: () => {},
         closeSocket: () => {},
+        abortStreaming: () => {},
         exitApp: () => {},
         createSession: () => {
           called = true;
@@ -52,6 +53,7 @@ describe("global input handler", () => {
         setPane: () => {},
         clearReconnectTimer: () => {},
         closeSocket: () => {},
+        abortStreaming: () => {},
         exitApp: () => {},
         createSession: () => {},
         deleteSession: () => {},
@@ -62,5 +64,74 @@ describe("global input handler", () => {
     );
 
     expect(opened).toBe(true);
+  });
+
+  test("quits from any pane and aborts active streaming", () => {
+    let aborted = false;
+    let closed = false;
+    let exited = false;
+
+    handleGlobalInput(
+      "q",
+      {},
+      {
+        pane: Pane.Chat,
+        sessions: [makeSession()],
+        selectedSessionIndex: 0,
+        setPane: () => {},
+        clearReconnectTimer: () => {},
+        closeSocket: () => {
+          closed = true;
+        },
+        abortStreaming: () => {
+          aborted = true;
+        },
+        exitApp: () => {
+          exited = true;
+        },
+        createSession: () => {},
+        deleteSession: () => {},
+        openSession: () => {},
+      },
+    );
+
+    expect(aborted).toBe(true);
+    expect(closed).toBe(true);
+    expect(exited).toBe(true);
+  });
+
+  test("reopens selected session on r from any pane", () => {
+    let opened = false;
+    let switchedToChat = false;
+
+    handleGlobalInput(
+      "r",
+      {},
+      {
+        pane: Pane.Capabilities,
+        sessions: [makeSession()],
+        selectedSessionIndex: 0,
+        setPane: (next) => {
+          if (typeof next === "function") {
+            const resolved = next(Pane.Sessions);
+            switchedToChat = resolved === Pane.Chat;
+          } else {
+            switchedToChat = next === Pane.Chat;
+          }
+        },
+        clearReconnectTimer: () => {},
+        closeSocket: () => {},
+        abortStreaming: () => {},
+        exitApp: () => {},
+        createSession: () => {},
+        deleteSession: () => {},
+        openSession: () => {
+          opened = true;
+        },
+      },
+    );
+
+    expect(opened).toBe(true);
+    expect(switchedToChat).toBe(true);
   });
 });

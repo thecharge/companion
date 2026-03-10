@@ -91,4 +91,21 @@ export const WS_MESSAGE_TYPE = {
 } as const;
 
 export const LOADER_FRAMES = ["|", "/", "-", "\\"] as const;
-export const BRAILLE_SHIFT_FRAMES = ["\u2801", "\u2803", "\u2807", "\u280f", "\u281f", "\u283f", "\u287f"] as const;
+export const BRAILLE_SHIFT_FRAMES = [
+  "\u2801",
+  "\u2803",
+  "\u2807",
+  "\u280f",
+  "\u281f",
+  "\u283f",
+  "\u287f",
+  "\u28ff",
+  "\u28fe",
+  "\u28fc",
+  "\u28f8",
+  "\u28f0",
+  "\u28e0",
+  "\u28c0",
+  "\u2880",
+  "\u2800",
+] as const;
