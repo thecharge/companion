@@ -1,0 +1,49 @@
+name: sql-workflow-guide-skill
+version: "1.0.0"
+description: "Teaches SQL workflow, query design, and safe execution steps without running shell commands."
+tags: [sql, database, guide]
+prompt: "Use this skill when the user asks how to write, validate, or troubleshoot SQL queries."
+
+tools:
+  - name: sql_workflow_guide
+    kind: guide
+    description: "Provides a step-by-step SQL workflow for a requested task."
+    parameters:
+      task:
+        type: string
+        description: "SQL objective, e.g. find top customers by revenue in the last 30 days"
+        required: true
+      dialect:
+        type: string
+        description: "Optional SQL dialect, e.g. postgres, sqlite, mysql"
+        required: false
+    guide: |
+      SQL workflow for: {{task}}
+
+      1) Clarify objective and output shape
+      - Define columns and grain (row-per-customer, row-per-order, etc.).
+      - Confirm time window, filters, and grouping requirements.
+
+      2) Discover schema first
+      - Identify candidate tables and join keys.
+      - Validate column names and data types in the target dialect ({{dialect}} if provided).
+
+      3) Build query incrementally
+      - Start with a minimal SELECT + LIMIT.
+      - Add JOINs one by one and verify cardinality.
+      - Add WHERE filters, then GROUP BY/aggregations.
+
+      4) Validate and de-risk
+      - Check null handling and duplicate amplification after joins.
+      - Compare counts before/after filters.
+      - Use EXPLAIN for expensive queries and verify index usage.
+
+      5) Production safety
+      - For UPDATE/DELETE, wrap in transaction and include rollback plan.
+      - Keep destructive queries behind explicit confirmation.
+
+      Deliverables:
+      - Final SQL query
+      - Explanation of join strategy
+      - Validation checks performed
+      - Performance and safety notes

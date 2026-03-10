@@ -191,6 +191,7 @@ export const AppLayout = ({
       <CapabilitiesPane
         caps={caps}
         auditEvents={auditEvents}
+        activeSessionId={activeSessionId}
         active={pane === Pane.Capabilities}
         loaderFrameIndex={loaderFrameIndex}
       />

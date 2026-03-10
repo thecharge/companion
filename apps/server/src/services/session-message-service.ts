@@ -45,6 +45,12 @@ export class SessionMessageService {
       return;
     }
 
+    log.info(`processMessage start session=${sessionId}`, {
+      mode: session.mode,
+      working_dir: workingDir,
+      content_preview: content.slice(0, 120),
+    });
+
     const baseSessionConfig = this.params.configStore.get(sessionId);
     const sessionConfig = await resolveWorkingDirConfig(baseSessionConfig, workingDir, this.params.rootConfigPath);
     const history = await this.chatRepository.listMessages(sessionId, sessionConfig.memory.context_window.max_messages);
@@ -76,6 +82,11 @@ export class SessionMessageService {
         working_dir: workingDir,
         mode: session.mode,
         signal,
+      });
+
+      log.info(`processMessage done session=${sessionId}`, {
+        stopped_reason: result.stopped_reason,
+        reply_chars: result.reply.length,
       });
 
       const assistantMessage = await this.chatRepository.addAssistantMessage(sessionId, result.reply);

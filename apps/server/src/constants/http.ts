@@ -38,6 +38,7 @@ export const RoutePath = {
 export const HeaderName = {
   Authorization: "Authorization",
   ApiKey: "x-api-key",
+  RequestId: "x-request-id",
   Upgrade: "Upgrade",
   ContentType: "Content-Type",
   CacheControl: "Cache-Control",

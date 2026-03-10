@@ -74,6 +74,7 @@ export class AuditLogService {
 
   recordBusEvent = async (event: CompanionEvent): Promise<void> => {
     const mapped = this.mapBusEvent(event.type);
+    const metadata = this.extractBusMetadata(event.type, event.payload);
     await this.record({
       event_id: newId(),
       timestamp: event.ts.toISOString(),
@@ -82,7 +83,7 @@ export class AuditLogService {
       status: mapped.status,
       session_id: event.session_id,
       actor_type: "system",
-      metadata: { type: event.type },
+      metadata,
     });
   };
 
@@ -117,6 +118,48 @@ export class AuditLogService {
       return { category: AuditCategory.Session, action: "message", status: AuditStatus.Ok };
     }
     return { category: AuditCategory.Session, action: "event", status: AuditStatus.Ok };
+  };
+
+  private extractBusMetadata = (type: EventType, payload: unknown): Record<string, unknown> => {
+    const p = (payload ?? {}) as Record<string, unknown>;
+    const base: Record<string, unknown> = { type };
+
+    if (type === EventType.AgentStart || type === EventType.AgentEnd) {
+      return {
+        ...base,
+        agent: p.agent ? String(p.agent) : undefined,
+        model: p.model ? String(p.model) : undefined,
+        stopped_reason: p.stopped_reason ? String(p.stopped_reason) : undefined,
+      };
+    }
+
+    if (type === EventType.AgentThought) {
+      const text = p.text ? String(p.text) : "";
+      return {
+        ...base,
+        agent: p.agent ? String(p.agent) : undefined,
+        text_preview: text.slice(0, 180),
+      };
+    }
+
+    if (type === EventType.ToolStart || type === EventType.ToolEnd) {
+      return {
+        ...base,
+        agent: p.agent ? String(p.agent) : undefined,
+        tool: p.tool ? String(p.tool) : undefined,
+        duration_ms: Number.isFinite(Number(p.duration_ms)) ? Number(p.duration_ms) : undefined,
+        error: p.error ? String(p.error).slice(0, 180) : undefined,
+      };
+    }
+
+    if (type === EventType.Error) {
+      return {
+        ...base,
+        error: p.error ? String(p.error).slice(0, 240) : undefined,
+      };
+    }
+
+    return base;
   };
 
   private extractHttpContext = (

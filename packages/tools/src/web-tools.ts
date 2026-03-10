@@ -100,6 +100,8 @@ export function createWeatherLookupTool(): ToolDefinition {
 
       return [
         `Weather for ${hit.name}${hit.country ? `, ${hit.country}` : ""}:`,
+        `- Coordinates: ${hit.latitude}, ${hit.longitude}`,
+        `- Timezone: ${hit.timezone ?? "n/a"}`,
         `- Time: ${current.time ?? "n/a"}`,
         `- Temperature: ${current.temperature_2m ?? "n/a"} C`,
         `- Feels like: ${current.apparent_temperature ?? "n/a"} C`,

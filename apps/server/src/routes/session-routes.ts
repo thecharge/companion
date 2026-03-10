@@ -5,6 +5,7 @@
 
 import {
   EventType,
+  Logger,
   MessageRole,
   type SessionId,
   type SessionMode,
@@ -27,6 +28,8 @@ import {
 import { badRequestResponse, errorResponse, invalidBodyResponse, notFoundResponse } from "../middleware/http-responses";
 import type { AuditLogService } from "../services/audit-log-service";
 import type { SessionMessageService } from "../services/session-message-service";
+
+const log = new Logger("server.session-routes");
 
 interface SessionPostBody {
   title?: string;
@@ -200,6 +203,7 @@ export const handleSessionRoutes = async (
     if (!session) return notFoundResponse();
 
     if (ctx.activeCancels.has(sessionId)) {
+      log.warn(`Rejecting message: session busy (${sessionId})`);
       await auditLogService.recordHttpEvent({
         action: "session_message_rejected_busy",
         status: "error",
@@ -216,6 +220,11 @@ export const handleSessionRoutes = async (
     if (!content) return badRequestResponse(ResponseError.ContentRequired);
 
     const workingDir = body.working_dir ?? process.cwd();
+    log.info(`Accepted message for session ${sessionId}`, {
+      stream: Boolean(body.stream),
+      working_dir: workingDir,
+      content_preview: content.slice(0, 80),
+    });
     const userMessage = await ctx.db.messages.add({
       id: asMessage(newId()),
       session_id: sessionId,

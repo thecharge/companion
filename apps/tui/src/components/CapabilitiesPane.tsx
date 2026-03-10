@@ -36,7 +36,19 @@ const tabItems = (
     return auditEvents.map((event) => ({
       title:
         `${event.status.toUpperCase()} ${event.category} ${event.http_method ?? ""} ${event.http_path ?? ""}`.trim(),
-      detail: `${event.action}${event.actor_id ? ` actor=${event.actor_id}` : ""}${event.source_ip ? ` ip=${event.source_ip}` : ""}${event.request_id ? ` req=${event.request_id}` : ""}`,
+      detail: [
+        event.action,
+        event.session_id ? `sid=${event.session_id}` : "",
+        event.actor_id ? `actor=${event.actor_id}` : "",
+        event.source_ip ? `ip=${event.source_ip}` : "",
+        event.request_id ? `req=${event.request_id}` : "",
+        event.metadata?.["agent"] ? `agent=${String(event.metadata["agent"])}` : "",
+        event.metadata?.["tool"] ? `tool=${String(event.metadata["tool"])}` : "",
+        event.metadata?.["stopped_reason"] ? `reason=${String(event.metadata["stopped_reason"])}` : "",
+        event.metadata?.["error"] ? `err=${String(event.metadata["error"])}` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
       extra: new Date(event.timestamp).toLocaleTimeString("en", { hour12: false }),
     }));
   }
@@ -47,16 +59,19 @@ const tabItems = (
 export function CapabilitiesPane({
   caps,
   auditEvents,
+  activeSessionId,
   active,
   loaderFrameIndex,
 }: {
   caps: Caps | null;
   auditEvents: AuditEvent[];
+  activeSessionId?: string;
   active: boolean;
   loaderFrameIndex: number;
 }) {
   const [tab, setTab] = useState<Tab>("agents");
   const [offset, setOffset] = useState(0);
+  const [auditScope, setAuditScope] = useState<"session" | "all">(activeSessionId ? "session" : "all");
 
   useInput((ch, key) => {
     if (!active) return;
@@ -75,6 +90,11 @@ export function CapabilitiesPane({
     }
     if (ch === "4" || ch.toLowerCase() === "u") {
       setTab("audit");
+      setOffset(0);
+    }
+
+    if (ch.toLowerCase() === "f" && tab === "audit") {
+      setAuditScope((current) => (current === "session" ? "all" : "session"));
       setOffset(0);
     }
 
@@ -127,7 +147,12 @@ export function CapabilitiesPane({
     }
   });
 
-  const items = caps ? tabItems(tab, caps, auditEvents) : [];
+  const filteredAuditEvents =
+    auditScope === "all"
+      ? auditEvents
+      : auditEvents.filter((event) => !event.session_id || event.session_id === activeSessionId);
+
+  const items = caps ? tabItems(tab, caps, filteredAuditEvents) : [];
   const visible = items.slice(offset, offset + PAGE_SIZE);
   const frame = BRAILLE_SHIFT_FRAMES[loaderFrameIndex % BRAILLE_SHIFT_FRAMES.length] ?? BRAILLE_SHIFT_FRAMES[0];
 
@@ -145,6 +170,11 @@ export function CapabilitiesPane({
             <Text color={tab === "skills" ? "cyan" : "gray"}> Skills({caps.skills.length})</Text>
             <Text color={tab === "audit" ? "cyan" : "gray"}> Audit({auditEvents.length})</Text>
           </Box>
+          {tab === "audit" && (
+            <Text color="gray" dimColor>
+              scope={auditScope} (f toggle)
+            </Text>
+          )}
           {offset > 0 && (
             <Text color="gray" dimColor>
               offset {offset} (up/down j/k, PgUp/PgDn, g/G)

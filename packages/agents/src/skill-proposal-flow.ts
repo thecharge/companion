@@ -15,10 +15,11 @@ import {
 } from "./skill-acquisition";
 
 const proposalReply = (proposal: ProposedSkillSpec): string => {
+  const implementationType = proposal.implementation_type === "guide" ? "guide" : "script";
   return [
     `I detected a reusable capability gap and propose a new skill: "${proposal.name}".`,
     `Reason: ${proposal.why}`,
-    `Planned tool: ${proposal.tool_name}`,
+    `Planned tool: ${proposal.tool_name} (${implementationType})`,
     "Reply 'yes' to create it now, or 'no' to continue without creating it.",
   ].join("\n");
 };
@@ -57,7 +58,8 @@ export const handlePendingSkillProposal = async (params: {
 
       params.blackboard.setScratchpad(PENDING_SKILL_KEY, null);
       params.blackboard.appendObservation(`Created skill ${created.spec.name} at ${created.path}`);
-      return `Created skill "${created.spec.name}" with tool "${created.spec.tool_name}" at ${created.path}. It is now registered and available for this session.`;
+      const implementationType = created.spec.implementation_type === "guide" ? "guide" : "script";
+      return `Created skill "${created.spec.name}" with tool "${created.spec.tool_name}" (${implementationType}) at ${created.path}. It is now registered and available for this session.`;
     } catch (error) {
       params.blackboard.setScratchpad(PENDING_SKILL_KEY, null);
       return `Skill creation failed: ${String(error)}`;

@@ -57,6 +57,7 @@ RULES:
 - Output ONLY JSON. Nothing else.
 - Do NOT say "use run_shell" or "you should run". YOU run it by outputting the JSON above.
 - The "tool" field must be an exact tool name from the list above.
+- If a tool description starts with [skill:guide], use it for teaching/how-to/procedural requests instead of shell execution.
 - Never output plain English sentences as your response.
 
 RULES FOR FILE/FOLDER TASKS:

@@ -12,6 +12,7 @@ interface SkillTool {
   name: string;
   description: string;
   parameters: Record<string, SkillParam>;
+  kind?: "script" | "guide";
 }
 
 export const createSkillToolDefinition = (
@@ -26,7 +27,7 @@ export const createSkillToolDefinition = (
       type: "function",
       function: {
         name: tool.name,
-        description: tool.description,
+        description: `[skill:${tool.kind ?? "script"}] ${tool.description}`,
         parameters: {
           type: "object",
           properties: Object.fromEntries(

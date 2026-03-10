@@ -283,12 +283,49 @@ export const bus = new EventBus();
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 
+const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+const parseLogLevel = (raw: string | undefined): LogLevel => {
+  const normalized = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "debug" || normalized === "info" || normalized === "warn" || normalized === "error") {
+    return normalized;
+  }
+  return "info";
+};
+
 export class Logger {
   constructor(private readonly ns: string) {}
 
   private emit(level: LogLevel, msg: string, meta?: unknown): void {
+    const minLevel = parseLogLevel(process.env.COMPANION_LOG_LEVEL);
+    if (LOG_LEVEL_ORDER[level] < LOG_LEVEL_ORDER[minLevel]) {
+      return;
+    }
+
     const ts = new Date().toISOString();
     const out = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+
+    if ((process.env.COMPANION_LOG_FORMAT ?? "").trim().toLowerCase() === "json") {
+      const payload: Record<string, unknown> = {
+        ts,
+        level,
+        ns: this.ns,
+        msg,
+      };
+      if (meta !== undefined) {
+        payload.meta = meta;
+      }
+      out(JSON.stringify(payload));
+      return;
+    }
+
     if (meta !== undefined) {
       out(`[${ts}] [${level.toUpperCase()}] [${this.ns}] ${msg}`, meta);
     } else {

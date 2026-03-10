@@ -35,17 +35,35 @@ mode:
 - `v` toggles status details (`agent/tool` log and audit tail) in Chat pane.
 - In Capabilities pane: `1/2/3/4` or `a/t/s/u` switch tabs (`agents/tools/skills/audit`).
 - In Capabilities pane: `j/k` or arrows scroll; `PgUp/PgDn` page; `g/G` jump top/bottom.
+- In Capabilities `Audit` tab: `f` toggles scope between active-session events and all events.
 - `Esc` cancels active task.
 
 Capabilities pane behavior:
 - Loading now uses braille-shift animation rather than static text.
 - `Audit` tab shows recent server audit events from `/audit/events`.
 
+## Skill Types
+
+- `script` skills execute code in the sandbox/runtime environment.
+- `guide` skills return procedural instructions and templates (no shell execution required).
+- Guide skills support `{{parameter_name}}` placeholders in `guide:` content.
+
 ## API Flow
 
 1. Create session.
 2. Post messages with optional `working_dir`.
 3. Read SSE stream output and task events.
+
+## Server Logging
+
+- Server now logs HTTP request lifecycle with request IDs and latency:
+  - `METHOD /path <- request`
+  - `METHOD /path -> STATUS (Nms)`
+- Agent/tool lifecycle is logged on the server (`agent_start`, `tool_start`, `tool_end`, `agent_end`, `event_error`).
+- Every HTTP response includes `x-request-id` for correlation with server logs.
+- Log controls:
+  - `COMPANION_LOG_LEVEL=debug|info|warn|error` (default: `info`)
+  - `COMPANION_LOG_FORMAT=json` for structured JSON logs.
 
 Mode validation quick checks:
 - `local`: verify no cloud key is required and tasks complete.

@@ -14,6 +14,8 @@ export interface ProposedSkillSpec {
   tool_name: string;
   why: string;
   parameters: ProposedSkillParam[];
+  implementation_type?: "script" | "guide";
+  guide_text?: string;
   script_hint?: string;
 }
 
@@ -69,6 +71,14 @@ function cleanDescription(text: string): string {
     .slice(0, 240);
 }
 
+function cleanGuideText(text: string): string {
+  return text
+    .replace(/\[Relevant memories\][\s\S]*$/i, "")
+    .replace(/\r/g, "")
+    .trim()
+    .slice(0, 2000);
+}
+
 function isGitBranchHygieneSpec(spec: ProposedSkillSpec): boolean {
   const blob = `${spec.name} ${spec.tool_name} ${spec.description}`.toLowerCase();
   return blob.includes("git") && blob.includes("branch") && blob.includes("hygiene");
@@ -77,6 +87,36 @@ function isGitBranchHygieneSpec(spec: ProposedSkillSpec): boolean {
 export function defaultSkillProposalFromMessage(message: string): Partial<ProposedSkillSpec> {
   const cleanedMessage = cleanDescription(message);
   const normalized = cleanedMessage.toLowerCase().replace(/[^a-z0-9\s]+/g, " ");
+
+  const sqlTeachingIntent =
+    /\b(sql|postgres|postgresql|sqlite|database|query|schema|join|index)\b/.test(normalized) &&
+    /\b(teach|learn|how|workflow|guide|explain)\b/.test(normalized);
+
+  if (sqlTeachingIntent) {
+    return {
+      name: "sql_workflow_guide_skill",
+      description: "Reusable SQL guidance for schema discovery, query design, validation, and safe execution.",
+      tool_name: "sql_workflow_guide",
+      why: "User asked for teachable SQL capability, which should be reusable as guidance instead of shell execution.",
+      implementation_type: "guide",
+      parameters: [
+        {
+          name: "task",
+          type: "string",
+          description: "Desired SQL task or question",
+          required: true,
+        },
+      ],
+      guide_text: [
+        "SQL workflow for: {{task}}",
+        "1) Discover schema first (tables, columns, PK/FK, indexes).",
+        "2) Draft the query with explicit joins and qualified column names.",
+        "3) Validate logic with LIMIT and representative filters before broad scans.",
+        "4) Explain expected cardinality and performance risk points.",
+        "5) If mutation is needed, wrap in transaction and provide rollback strategy.",
+      ].join("\\n"),
+    };
+  }
 
   const compositeOps =
     /\b(weather|temperature|forecast)\b/.test(normalized) &&
@@ -89,6 +129,7 @@ export function defaultSkillProposalFromMessage(message: string): Partial<Propos
       description: "Reusable automation for current UTC time, host system load, and weather summary.",
       tool_name: "system_load_weather_time",
       why: "Request combines multiple recurring ops checks into one repeatable workflow.",
+      implementation_type: "script",
       parameters: [
         {
           name: "city",
@@ -118,6 +159,7 @@ export function defaultSkillProposalFromMessage(message: string): Partial<Propos
     description: `Reusable automation for: ${cleanedMessage.slice(0, 140)}`,
     tool_name: `${stem}_task`,
     why: "Explicit user request to create a reusable skill.",
+    implementation_type: "script",
     parameters: [
       {
         name: "input",
@@ -157,6 +199,8 @@ export function normalizeSkillSpec(input: Partial<ProposedSkillSpec>): ProposedS
     tool_name: toolName,
     why: cleanDescription(input.why ?? "Repeated task detected") || "Repeated task detected",
     parameters: params,
+    implementation_type: input.implementation_type === "guide" ? "guide" : "script",
+    guide_text: cleanGuideText(input.guide_text ?? ""),
     script_hint: cleanDescription(input.script_hint ?? ""),
   };
 }
@@ -177,7 +221,7 @@ Rules:
 - Keep output strict JSON, no markdown.
 
 Return exactly:
-{"should_acquire":true|false,"name":"...","description":"...","tool_name":"...","why":"...","parameters":[{"name":"...","type":"string|number|boolean","description":"...","required":true}],"script_hint":"short implementation hint"}`;
+{"should_acquire":true|false,"name":"...","description":"...","tool_name":"...","why":"...","implementation_type":"script|guide","parameters":[{"name":"...","type":"string|number|boolean","description":"...","required":true}],"guide_text":"only when implementation_type=guide","script_hint":"only when implementation_type=script"}`;
 }
 
 export function renderSkillYaml(spec: ProposedSkillSpec): string {
@@ -192,6 +236,8 @@ export function renderSkillYaml(spec: ProposedSkillSpec): string {
     : `      input:\n        type: string\n        description: "Input payload"\n        required: true`;
 
   const firstArg = spec.parameters[0]?.name ?? "input";
+  const implementationType = spec.implementation_type === "guide" ? "guide" : "script";
+
   const scriptHintLine = spec.script_hint ? `# Hint: ${spec.script_hint}\n` : "";
   const scriptBody = isGitBranchHygieneSpec(spec)
     ? [
@@ -253,6 +299,24 @@ export function renderSkillYaml(spec: ProposedSkillSpec): string {
     .map((line) => `      ${line}`)
     .join("\n");
 
+  const guideBody =
+    spec.guide_text?.trim() ||
+    [
+      `Guide for ${spec.tool_name}:`,
+      `- Understand requested objective: {{${firstArg}}}`,
+      "- Produce a clear, step-by-step workflow.",
+      "- Include validation, safety checks, and expected outputs.",
+    ].join("\n");
+  const indentedGuideBody = guideBody
+    .split("\n")
+    .map((line) => `      ${line}`)
+    .join("\n");
+
+  const toolBody =
+    implementationType === "guide"
+      ? `    kind: guide\n    guide: |\n${indentedGuideBody}`
+      : `    timeout: 30\n    script: |\n      set -eu\n${indentedScriptBody}`;
+
   return `name: ${slug}
 version: "1.0.0"
 description: "${spec.description}"
@@ -263,10 +327,7 @@ tools:
     description: "${spec.description}"
     parameters:
 ${paramsBlock}
-    timeout: 30
-    script: |
-      set -eu
-${indentedScriptBody}
+${toolBody}
 `;
 }
 

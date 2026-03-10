@@ -1,6 +1,8 @@
 export const SKILL_INTENT_PATTERNS = [
   /(create|add|build|generate|acquire)\s+(a\s+)?skill\b/i,
   /(teach|learn)\s+(this|that|new)\s+(capability|skill)\b/i,
+  /\bteach\b.*\b(agent|assistant)\b.*\b(sql|tool|workflow|process|how\s+to)\b/i,
+  /\bhow\s+to\b.*\b(sql|query|database|tool)\b/i,
 ] as const;
 
 const FILE_TASK_PATTERNS = [

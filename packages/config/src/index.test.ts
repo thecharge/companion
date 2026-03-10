@@ -4,21 +4,40 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { access } from "node:fs/promises";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { ConfigStore, loadConfig, resolveWorkingDirConfig } from "./index";
 
-const repoConfigPath = resolve(import.meta.dir, "../../../companion.yaml");
+const repoConfigCandidates = [
+  resolve(import.meta.dir, "../../../companion.yaml"),
+  resolve(import.meta.dir, "../../../companion.yaml.example"),
+];
+
+async function resolveRepoConfigPath(): Promise<string> {
+  for (const candidate of repoConfigCandidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // try next candidate
+    }
+  }
+
+  throw new Error(`No workspace config found in candidates: ${repoConfigCandidates.join(", ")}`);
+}
 
 describe("config", () => {
   test("loads workspace config", async () => {
+    const repoConfigPath = await resolveRepoConfigPath();
     const cfg = await loadConfig(repoConfigPath);
     expect(cfg.server.port).toBeNumber();
     expect(cfg.models.local?.provider).toBe("ollama");
   });
 
   test("config store returns patched mode", async () => {
+    const repoConfigPath = await resolveRepoConfigPath();
     const cfg = await loadConfig(repoConfigPath);
     const store = new ConfigStore(cfg);
     const sid = "session-1";
@@ -27,6 +46,7 @@ describe("config", () => {
   });
 
   test("loads workflow tracks from orchestrator config", async () => {
+    const repoConfigPath = await resolveRepoConfigPath();
     const cfg = await loadConfig(repoConfigPath);
     expect(cfg.orchestrator.workflow_tracks.product_delivery?.stages.length).toBeGreaterThan(0);
     expect(cfg.orchestrator.workflow_tracks.operations?.triggers.length).toBeGreaterThan(0);

@@ -25,6 +25,8 @@ interface SkillTool {
   name: string;
   description: string;
   parameters: Record<string, SkillParam>;
+  kind?: "script" | "guide";
+  guide?: string;
   script?: string;
   script_file?: string;
   timeout?: number;
@@ -94,6 +96,11 @@ export function registerSkills(skills: Skill[], registry: ToolRegistry): void {
 
 function makeHandler(_skill: Skill, tool: SkillTool, _dir: string) {
   return async (args: Record<string, unknown>, ctx: ToolContext): Promise<string> => {
+    const mode = tool.kind ?? (tool.guide && !tool.script ? "guide" : "script");
+    if (mode === "guide") {
+      return renderGuideOutput(_skill, tool, args);
+    }
+
     const timeoutMs = (tool.timeout ?? 30) * 1000;
 
     // Build safe environment — server secrets NEVER forwarded
@@ -144,4 +151,24 @@ function makeHandler(_skill: Skill, tool: SkillTool, _dir: string) {
     }
     return stdout || "(no output)";
   };
+}
+
+function renderGuideOutput(skill: Skill, tool: SkillTool, args: Record<string, unknown>): string {
+  const template = tool.guide?.trim() || skill.prompt?.trim() || "No guide content provided for this tool.";
+  const rendered = template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_full, key: string) => {
+    const value = args[key];
+    return value === undefined || value === null ? "" : String(value);
+  });
+
+  const argsLines = Object.entries(args).map(([key, value]) => `- ${key}: ${String(value)}`);
+  return [
+    `Guide skill: ${skill.name}`,
+    `Tool: ${tool.name}`,
+    rendered,
+    argsLines.length ? "" : "",
+    argsLines.length ? "Inputs:" : "",
+    ...argsLines,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

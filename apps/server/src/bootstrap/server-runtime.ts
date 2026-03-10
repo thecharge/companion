@@ -3,7 +3,7 @@
  * Copyright (c) 2026 Companion contributors
  */
 
-import { Logger } from "@companion/core";
+import { Logger, newId } from "@companion/core";
 import { HeaderName, HeaderValue, HttpStatus, QueryParam } from "../constants/http";
 import { isAuthorizedRequest } from "../middleware/auth";
 import { unauthorizedResponse } from "../middleware/http-responses";
@@ -25,30 +25,67 @@ export const createServerRuntime = (
     hostname: ctx.cfg.server.host,
     idleTimeout: 0,
     fetch: (req: Request, server: import("bun").Server) => {
+      const startedAt = Date.now();
+      const url = new URL(req.url);
+      const requestId = req.headers.get(HeaderName.RequestId) ?? newId();
+      const withRequestId = (response: Response): Response => {
+        const headers = new Headers(response.headers);
+        headers.set(HeaderName.RequestId, requestId);
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      };
+      const logResponse = (response: Response): Response => {
+        log.info(`${req.method} ${url.pathname} -> ${response.status} (${Date.now() - startedAt}ms)`, {
+          request_id: requestId,
+        });
+        return withRequestId(response);
+      };
+
+      log.info(`${req.method} ${url.pathname} <- request`, { request_id: requestId });
+
       if (!isAuthorizedRequest(req, ctx.cfg)) {
-        return withSecurityHeaders(unauthorizedResponse());
+        return logResponse(withSecurityHeaders(unauthorizedResponse()));
       }
 
       const upgrade = req.headers.get(HeaderName.Upgrade);
       if (upgrade === HeaderValue.WebSocket) {
-        const url = new URL(req.url);
         const token = url.searchParams.get(QueryParam.Token) ?? "";
         const sessionId = url.searchParams.get(QueryParam.Session) ?? "";
         const secret = ctx.cfg.server.secret;
 
         if (secret && token !== secret) {
-          return withSecurityHeaders(unauthorizedResponse());
+          log.warn(`WS upgrade unauthorized for session=${sessionId || "<empty>"}`, { request_id: requestId });
+          return logResponse(withSecurityHeaders(unauthorizedResponse()));
         }
 
         const upgraded = server.upgrade(req, { data: { session_id: sessionId } });
         if (!upgraded) {
-          return withSecurityHeaders(new Response("WS upgrade failed", { status: HttpStatus.InternalServerError }));
+          log.error(`WS upgrade failed for session=${sessionId || "<empty>"}`, { request_id: requestId });
+          return logResponse(
+            withSecurityHeaders(new Response("WS upgrade failed", { status: HttpStatus.InternalServerError })),
+          );
         }
+
+        log.info(`WS upgrade ok for session=${sessionId || "<empty>"}`, { request_id: requestId });
 
         return undefined;
       }
 
-      return handleHttpRequest(req).then(withSecurityHeaders);
+      return handleHttpRequest(req)
+        .then(withSecurityHeaders)
+        .then(logResponse)
+        .catch((error) => {
+          log.error(`${req.method} ${url.pathname} -> 500 (${Date.now() - startedAt}ms)`, {
+            request_id: requestId,
+            error: String(error),
+          });
+          return logResponse(
+            withSecurityHeaders(new Response("Internal server error", { status: HttpStatus.InternalServerError })),
+          );
+        });
     },
     websocket: {
       open: (ws: ServerWebSocket) => {
