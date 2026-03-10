@@ -116,6 +116,24 @@ export COMPANION_SANDBOX_RUNTIME=docker
 4. Preserve strict security checks on integration webhooks.
 5. Prefer deterministic proofs for runtime claims.
 
+## Required Skills And Approach
+
+When implementing or refactoring functionality, apply this package-wide approach:
+
+1. Start from the architecture contract in `Docs/ARCHITECTURE_PATTERNS.md`.
+2. Add or update `Strategy`, `Adapter`, `Repository`, `Facade`, and `Factory` boundaries where applicable.
+3. Remove hardcoded strings and duplicate literals by introducing typed constants.
+4. Add/extend tests for each extracted seam (strategy routing, repository behavior, factory wiring).
+5. Keep app entrypoints thin (`apps/server/src/index.ts`, `apps/tui/src/App.tsx`).
+
+Skills and capabilities contributors/agents should actively use:
+
+1. `file-edit`: safe structured edits with minimal blast radius.
+2. `skill-factory`: repeatable generation of factory-backed modules.
+3. `subagent-coordination`: decomposing large cross-package refactors.
+4. `provider-readiness`: provider integration checks and safety checks.
+5. `compliance-readiness`: traceability and deterministic verification evidence.
+
 ## Before Opening PRs
 
 Run:

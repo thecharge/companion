@@ -9,6 +9,7 @@ import { readdir } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { findNearestOverridePath, loadConfigOverride } from "./override-config-repository";
 
 // ── Schema ────────────────────────────────────────────────────
 
@@ -279,8 +280,6 @@ function walkInterpolate(obj: unknown): unknown {
   return obj;
 }
 
-const OVERRIDE_CANDIDATES = ["companion.override.yaml", "companion.override.yml", ".companion/companion.yaml"];
-
 // ── Loader ────────────────────────────────────────────────────
 
 export async function loadConfig(path = "./companion.yaml"): Promise<Config> {
@@ -304,36 +303,6 @@ export async function loadConfig(path = "./companion.yaml"): Promise<Config> {
     throw new Error(`Config validation failed:\n${issues}`);
   }
   return result.data;
-}
-
-export async function findNearestOverridePath(workingDir: string, stopDir?: string): Promise<string | undefined> {
-  let current = resolve(workingDir);
-  const stop = stopDir ? resolve(stopDir) : undefined;
-
-  while (true) {
-    for (const candidate of OVERRIDE_CANDIDATES) {
-      const candidatePath = join(current, candidate);
-      if (await Bun.file(candidatePath).exists()) {
-        return candidatePath;
-      }
-    }
-
-    if (stop && current === stop) return undefined;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-}
-
-export async function loadConfigOverride(path: string): Promise<Partial<Config>> {
-  const file = Bun.file(path);
-  if (!(await file.exists())) {
-    throw new Error(`override config not found at ${path}`);
-  }
-  const raw = await file.text();
-  const obj = walkInterpolate(parseYaml(raw));
-  if (!obj || typeof obj !== "object") return {};
-  return obj as Partial<Config>;
 }
 
 export async function resolveWorkingDirConfig(

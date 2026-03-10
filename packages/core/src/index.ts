@@ -5,6 +5,8 @@
  * Zero runtime dependencies outside @companion/config.
  */
 
+import { type IdGenerationStrategy, TimestampRandomIdStrategy } from "./id-generation-strategy";
+
 // ── Branded IDs ───────────────────────────────────────────────
 
 declare const __brand: unique symbol;
@@ -21,8 +23,15 @@ export function asMessage(s: string): MessageId {
 }
 
 let _seq = 0;
+let idStrategy: IdGenerationStrategy = new TimestampRandomIdStrategy();
+
+export function setIdGenerationStrategy(strategy: IdGenerationStrategy): void {
+  idStrategy = strategy;
+}
+
 export function newId(): string {
-  return `${Date.now().toString(36)}-${(++_seq).toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  _seq += 1;
+  return idStrategy.next(_seq);
 }
 
 // ── Result<T,E> ───────────────────────────────────────────────

@@ -11,6 +11,7 @@
 import { dirname, join } from "node:path";
 import type { ToolContext, ToolRegistry } from "@companion/tools";
 import { parse as parseYaml } from "yaml";
+import { createSkillToolDefinition } from "./skill-tool-factory";
 
 // ── Skill schema (runtime validated, not Zod — keeps dep tree clean) ──
 
@@ -86,25 +87,7 @@ async function loadSkillFile(path: string): Promise<Skill | null> {
 export function registerSkills(skills: Skill[], registry: ToolRegistry): void {
   for (const skill of skills) {
     for (const tool of skill.tools) {
-      registry.register({
-        schema: {
-          type: "function",
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: {
-              type: "object",
-              properties: Object.fromEntries(
-                Object.entries(tool.parameters).map(([k, v]) => [k, { type: v.type, description: v.description }]),
-              ),
-              required: Object.entries(tool.parameters)
-                .filter(([, v]) => v.required !== false)
-                .map(([k]) => k),
-            },
-          },
-        },
-        handler: makeHandler(skill, tool, dirname(/* skill dir */ "")),
-      });
+      registry.register(createSkillToolDefinition(skill, tool, makeHandler(skill, tool, dirname(/* skill dir */ ""))));
     }
   }
 }

@@ -25,6 +25,7 @@ The codebase is functional but still evolving. This repository now includes a co
 - Security baseline: `Docs/SECURITY.md`
 - Verification proof guide: `Docs/PROOF.md`
 - Extensibility and pipelines: `Docs/EXTENSIBILITY_GUIDE.md`
+- Architecture patterns and diagrams: `Docs/ARCHITECTURE_PATTERNS.md`
 - Real usage examples: `Docs/EXAMPLES.md`
 - Usage guide: `Docs/USAGE_GUIDE.md`
 - Development guide: `Docs/DEVELOPMENT_GUIDE.md`

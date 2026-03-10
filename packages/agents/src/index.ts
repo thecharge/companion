@@ -1,14 +1,13 @@
 import type { Config } from "@companion/config";
 import { type Blackboard, Logger, bus } from "@companion/core";
 import type { DB } from "@companion/db";
-import { createLLMClient } from "@companion/llm";
 import type { MemoryService } from "@companion/memory";
 import type { ToolRegistry } from "@companion/tools";
 import { AgentRunner } from "./agent-runner";
 import { executeDirectToolCalls } from "./direct-tool-execution";
 import { resolveIntentAgent } from "./intent-routing";
+import { decideOrchestratorAction } from "./orchestrator-decision-strategy";
 import { hasSkillIntent } from "./patterns";
-import { buildOrchestratorPrompt } from "./prompts";
 import { resolveResponderAgent } from "./role-policy";
 import { buildRuntimeConfig } from "./runtime-config";
 import { defaultSkillProposalFromMessage, normalizeSkillSpec } from "./skill-acquisition";
@@ -99,45 +98,25 @@ export class SessionProcessor {
 
     blackboard.appendDecision(0, "start", "orchestrator", user_message.slice(0, 80));
 
-    let decision: { action: string; target?: string; reason?: string };
     const forcedAgent = resolveIntentAgent(user_message, runtimeCfg);
-    if (forcedAgent) {
-      decision = {
-        action: "run_agent",
-        target: forcedAgent,
-        reason: "intent route: required tool capability detected",
-      };
-    } else {
-      const orchLLM = createLLMClient(orchCfg);
-      try {
-        const res = await orchLLM.chat({
-          messages: [
-            { role: "system", content: buildOrchestratorPrompt(runtimeCfg, this.registry, blackboard, mode) },
-            { role: "user", content: user_message },
-          ],
-          json_mode: orchCfg.provider === "ollama",
-          signal,
-        });
-        const raw = res.choices[0]?.message.content ?? "";
-        const cleaned = raw
-          .replace(/^```json\s*/i, "")
-          .replace(/\s*```$/i, "")
-          .trim();
-
-        try {
-          decision = JSON.parse(cleaned) as typeof decision;
-        } catch {
-          log.warn("Orchestrator non-JSON - defaulting to first configured agent", { raw: raw.slice(0, 80) });
-          const fallback = Object.keys(runtimeCfg.agents)[0] ?? responder;
-          decision = { action: "run_agent", target: fallback, reason: "parse fallback" };
-        }
-      } catch (error) {
-        const msg = String(error);
-        if (signal?.aborted || msg.includes("AbortError")) {
-          return { reply: "", blackboard, stopped_reason: "cancelled" };
-        }
-        throw error;
+    let decision: { action: string; target?: string; reason?: string };
+    try {
+      decision = await decideOrchestratorAction({
+        runtimeCfg,
+        forcedAgent,
+        blackboard,
+        mode,
+        registry: this.registry,
+        userMessage: user_message,
+        responder,
+        signal,
+      });
+    } catch (error) {
+      const msg = String(error);
+      if (signal?.aborted || msg.includes("AbortError")) {
+        return { reply: "", blackboard, stopped_reason: "cancelled" };
       }
+      throw error;
     }
 
     bus.emit({

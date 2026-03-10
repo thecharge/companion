@@ -330,15 +330,26 @@ export class SqliteDB implements DB {
   }
 }
 
+type DriverFactory = (cfg: Config) => Promise<DB>;
+
+const SQLITE_FACTORY: DriverFactory = async (cfg) => {
+  const dir = cfg.db.sqlite.path.split("/").slice(0, -1).join("/");
+  if (dir) await Bun.write(`${dir}/.keep`, "");
+  return new SqliteDB(cfg.db.sqlite.path);
+};
+
+const DRIVER_FACTORIES: Partial<Record<Config["db"]["driver"], DriverFactory>> = {
+  sqlite: SQLITE_FACTORY,
+};
+
 // ── Factory ───────────────────────────────────────────────────
 
 export async function createDB(cfg: Config): Promise<DB> {
-  if (cfg.db.driver === "sqlite") {
-    const dir = cfg.db.sqlite.path.split("/").slice(0, -1).join("/");
-    if (dir) await Bun.write(`${dir}/.keep`, "");
-    return new SqliteDB(cfg.db.sqlite.path);
+  const factory = DRIVER_FACTORIES[cfg.db.driver];
+  if (!factory) {
+    throw new Error("postgres driver: use createPostgresDB() from @companion/db/postgres");
   }
-  throw new Error("postgres driver: use createPostgresDB() from @companion/db/postgres");
+  return factory(cfg);
 }
 
 // Convenience — used in tests

@@ -6,39 +6,20 @@
 
 import type { Config } from "@companion/config";
 import type { DB } from "@companion/db";
-import {
-  createListDirTool,
-  createReadFileTool,
-  createRepoMapTool,
-  createSearchCodeTool,
-  createSearchHistoryTool,
-  createWriteFileTool,
-} from "./core-tools";
-import { createProviderMatrixTool, createRuntimePostureTool } from "./ops-tools";
+import { createDefaultTools } from "./factories/default-tools-factory";
 import { ToolRegistry } from "./registry";
-import { SandboxExecutor, createRunShellTool, createRunTestsTool } from "./sandbox";
+import { SandboxExecutor } from "./sandbox";
 import type { ToolCall, ToolContext, ToolDefinition, ToolHandler, ToolResult } from "./types";
-import { createWeatherLookupTool, createWebFetchTool } from "./web-tools";
 
 export type { ToolCall, ToolContext, ToolDefinition, ToolHandler, ToolResult };
 export { ToolRegistry, SandboxExecutor };
 
 export function createToolRegistry(cfg: Config, _db: DB): { registry: ToolRegistry; sandbox: SandboxExecutor } {
-  const sandbox = new SandboxExecutor(cfg);
+  const { tools, sandbox } = createDefaultTools(cfg, _db);
   const registry = new ToolRegistry();
-
-  registry.register(createReadFileTool());
-  registry.register(createWriteFileTool());
-  registry.register(createListDirTool());
-  registry.register(createSearchCodeTool());
-  registry.register(createRepoMapTool());
-  registry.register(createSearchHistoryTool());
-  registry.register(createRunShellTool(sandbox));
-  registry.register(createWebFetchTool());
-  registry.register(createWeatherLookupTool());
-  registry.register(createRunTestsTool(sandbox));
-  registry.register(createRuntimePostureTool());
-  registry.register(createProviderMatrixTool());
+  for (const tool of tools) {
+    registry.register(tool);
+  }
 
   return { registry, sandbox };
 }

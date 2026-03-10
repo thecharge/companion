@@ -10,6 +10,7 @@ import { Database } from "bun:sqlite";
 import type { Config } from "@companion/config";
 import type { SessionId } from "@companion/core";
 import type { ChatMessage } from "@companion/llm";
+import { VectorMemoryRepository } from "./vector-memory-repository";
 
 // ── VectorStore ───────────────────────────────────────────────
 
@@ -278,6 +279,7 @@ export class ContextBuilder {
 export class MemoryService {
   private context: ContextBuilder;
   private window: SlidingWindow;
+  private repository: VectorMemoryRepository;
 
   constructor(
     private vectors: VectorStore,
@@ -285,16 +287,11 @@ export class MemoryService {
   ) {
     this.context = new ContextBuilder(cfg.memory.context_window.max_messages, cfg.memory.context_window.max_tokens);
     this.window = new SlidingWindow(cfg.memory.sliding_window.chunk_size);
+    this.repository = new VectorMemoryRepository(vectors, cfg);
   }
 
   async recall(sessionId: SessionId, queryEmbedding: number[]): Promise<string[]> {
-    const results = await this.vectors.search(
-      sessionId,
-      queryEmbedding,
-      this.cfg.memory.recall.top_k,
-      this.cfg.memory.recall.min_score,
-    );
-    return results.map((r) => r.content);
+    return this.repository.recallByEmbedding(sessionId, queryEmbedding);
   }
 
   async store(
@@ -304,7 +301,7 @@ export class MemoryService {
     embedding: number[],
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.vectors.upsert({ id, session_id: sessionId, content, embedding, metadata });
+    await this.repository.storeEmbedding(sessionId, id, content, embedding, metadata);
   }
 
   buildContext(opts: {
